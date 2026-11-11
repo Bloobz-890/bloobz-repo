@@ -11,6 +11,17 @@ BZ.register({
     return BZ.html(r.body);
   },
 
+  /* JSON may arrive wrapped in an HTML page (browser view of a JSON url); unwrap it and show a snippet if it is still not JSON */
+  parse(body) {
+    let t = String(body || '').trim();
+    if (t[0] === '<') {
+      const m = t.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+      if (m) { t = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); }
+      else { const a = t.indexOf('{'), z = t.lastIndexOf('}'); if (a >= 0 && z > a) { t = t.slice(a, z + 1); } }
+    }
+    try { return JSON.parse(t); } catch (e) { throw new Error('Site sent a page, not data: ' + String(body || '').replace(/\s+/g, ' ').slice(0, 90)); }
+  },
+
   card(el) {
     const a = el.querySelector('a');
     const img = el.querySelector('img');
