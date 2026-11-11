@@ -2,7 +2,7 @@
 BZ.register({
   id: 'animepahe',
   name: 'AnimePahe',
-  version: 3,
+  version: 4,
   base: 'https://animepahe.pw',
 
   /* JSON may arrive wrapped in an HTML page (browser view of a JSON url); unwrap it and show a snippet if it is still not JSON */

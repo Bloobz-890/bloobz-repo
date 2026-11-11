@@ -2,8 +2,9 @@
 BZ.register({
   id: 'animexin',
   name: 'Animexin',
-  version: 3,
+  version: 4,
   base: 'https://animexin.dev',
+  test: 'soul land',
 
   async get(path) {
     const r = await BZ.get(BZ.abs(path, this.base), { referer: this.base + '/' });
