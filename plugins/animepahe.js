@@ -2,7 +2,7 @@
 BZ.register({
   id: 'animepahe',
   name: 'AnimePahe',
-  version: 2,
+  version: 3,
   base: 'https://animepahe.pw',
 
   /* JSON may arrive wrapped in an HTML page (browser view of a JSON url); unwrap it and show a snippet if it is still not JSON */
@@ -18,6 +18,7 @@ BZ.register({
 
   async api(path) {
     const r = await BZ.get(this.base + path, { referer: this.base + '/' });
+    BZ.log('api ' + r.status + ', ' + String(r.body || '').length + ' chars: ' + String(r.body || '').replace(/\s+/g, ' ').slice(0, 90));
     if (r.status < 200 || r.status >= 300) { throw new Error('Site answered ' + r.status + (r.status === 403 || r.status === 503 ? ' (blocked by protection page)' : '')); }
     return r;
   },

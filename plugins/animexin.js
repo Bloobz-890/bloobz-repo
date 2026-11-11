@@ -2,12 +2,13 @@
 BZ.register({
   id: 'animexin',
   name: 'Animexin',
-  version: 2,
+  version: 3,
   base: 'https://animexin.dev',
 
   async get(path) {
     const r = await BZ.get(BZ.abs(path, this.base), { referer: this.base + '/' });
     if (r.status < 200 || r.status >= 300) { throw new Error('Site answered ' + r.status + (r.status === 403 || r.status === 503 ? ' (blocked by Cloudflare)' : '')); }
+    BZ.log('page ' + r.status + ', ' + String(r.body || '').length + ' chars, title: ' + ((String(r.body || '').match(/<title[^>]*>([^<]*)/i) || [])[1] || '-').trim().slice(0, 60));
     return BZ.html(r.body);
   },
 
