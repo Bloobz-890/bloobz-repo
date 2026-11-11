@@ -2,8 +2,19 @@
 BZ.register({
   id: 'animepahe',
   name: 'AnimePahe',
-  version: 1,
-  base: 'https://animepahe.si',
+  version: 2,
+  base: 'https://animepahe.pw',
+
+  /* JSON may arrive wrapped in an HTML page (browser view of a JSON url); unwrap it and show a snippet if it is still not JSON */
+  parse(body) {
+    let t = String(body || '').trim();
+    if (t[0] === '<') {
+      const m = t.match(/<pre[^>]*>([\s\S]*?)<\/pre>/i);
+      if (m) { t = m[1].replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&'); }
+      else { const a = t.indexOf('{'), z = t.lastIndexOf('}'); if (a >= 0 && z > a) { t = t.slice(a, z + 1); } }
+    }
+    try { return JSON.parse(t); } catch (e) { throw new Error('Site sent a page, not data: ' + String(body || '').replace(/\s+/g, ' ').slice(0, 90)); }
+  },
 
   async api(path) {
     const r = await BZ.get(this.base + path, { referer: this.base + '/' });
@@ -13,13 +24,13 @@ BZ.register({
 
   async search(q) {
     const r = await this.api('/api?m=search&q=' + encodeURIComponent(q));
-    const j = BZ.json(r.body);
+    const j = this.parse(r.body);
     return (j.data || []).map(a => ({ id: a.session, title: a.title, poster: a.poster, badge: [a.type, a.year].filter(Boolean).join(' - ') }));
   },
 
   async home() {
     const r = await this.api('/api?m=airing&page=1');
-    const j = BZ.json(r.body);
+    const j = this.parse(r.body);
     return { rows: [{ title: 'Latest episodes', items: (j.data || []).map(a => ({ id: a.anime_session, title: a.anime_title, poster: a.snapshot, badge: 'EP ' + a.episode })) }] };
   },
 
@@ -28,7 +39,7 @@ BZ.register({
     let page = 1, last = 1;
     do {
       const r = await this.api('/api?m=release&id=' + encodeURIComponent(id) + '&sort=episode_asc&page=' + page);
-      const j = BZ.json(r.body);
+      const j = this.parse(r.body);
       last = j.last_page || 1;
       (j.data || []).forEach(e => eps.push({ id: id + '/' + e.session, number: String(e.episode), title: e.title || ('Episode ' + e.episode) }));
       page++;

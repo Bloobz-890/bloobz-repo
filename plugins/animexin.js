@@ -2,7 +2,7 @@
 BZ.register({
   id: 'animexin',
   name: 'Animexin',
-  version: 1,
+  version: 2,
   base: 'https://animexin.dev',
 
   async get(path) {
@@ -73,7 +73,7 @@ BZ.register({
       if (dm) {
         try {
           const r = await BZ.get('https://www.dailymotion.com/player/metadata/video/' + dm[1], { referer: 'https://www.dailymotion.com/' });
-          const j = BZ.json(r.body);
+          const j = this.parse(r.body);
           const auto = j && j.qualities && j.qualities.auto && j.qualities.auto[0];
           if (auto && auto.url) { out.push({ name: name + ' (Dailymotion)', url: auto.url, type: 'hls', headers: { referer: 'https://www.dailymotion.com/' } }); continue; }
         } catch (e) { BZ.log('dailymotion: ' + e.message); }
