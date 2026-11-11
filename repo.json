@@ -1,0 +1,25 @@
+{
+  "name": "BlooBZ Repo",
+  "description": "Official BlooBZ provider plugins",
+  "version": 1,
+  "plugins": [
+    {
+      "id": "animexin",
+      "name": "Animexin",
+      "description": "Anime and donghua, SUB",
+      "lang": "en",
+      "version": 1,
+      "status": "beta",
+      "url": "plugins/animexin.js"
+    },
+    {
+      "id": "animepahe",
+      "name": "AnimePahe",
+      "description": "Anime, SUB and DUB",
+      "lang": "en",
+      "version": 1,
+      "status": "beta",
+      "url": "plugins/animepahe.js"
+    }
+  ]
+}
