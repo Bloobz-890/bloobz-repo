@@ -67,7 +67,7 @@ BZ.register({
   },
 
   async search(q, page) {
-    const d = await this.get('/page/' + (page || 1) + '/?s=' + encodeURIComponent(q));
+    const d = await this.get((page && page > 1 ? '/page/' + page : '') + '/?s=' + encodeURIComponent(q));
     return this.cards(d, 'search');
   },
 
