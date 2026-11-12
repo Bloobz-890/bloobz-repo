@@ -6,11 +6,14 @@ BZ.register({
   base: 'https://donghuastream.org',
   test: 'soul land',
 
+  /* pages from the hidden browser can arrive with every space turned into '+': undo that so tags and classes work */
+  fix(b) { b = String(b || ''); return /<[a-z][a-z0-9]*\+[a-z-]+=/i.test(b) ? b.replace(/\+/g, ' ') : b; },
+
   async get(path) {
     const r = await BZ.get(BZ.abs(path, this.base), { referer: this.base + '/' });
     if (r.status < 200 || r.status >= 300) { throw new Error('Site answered ' + r.status + (r.status === 403 || r.status === 503 ? ' (blocked by Cloudflare)' : '')); }
-    BZ.log('page ' + r.status + ', ' + String(r.body || '').length + ' chars, title: ' + ((String(r.body || '').match(/<title[^>]*>([^<]*)/i) || [])[1] || '-').trim().slice(0, 60));
-    return BZ.html(r.body);
+    BZ.log('page ' + r.status + ', ' + String(r.body || '').length + ' chars, plus-fix ' + (this.fix(r.body) !== String(r.body || '')) + ', title: ' + ((String(r.body || '').match(/<title[^>]*>([^<]*)/i) || [])[1] || '-').trim().slice(0, 60));
+    return BZ.html(this.fix(r.body));
   },
 
   /* JSON may arrive wrapped in an HTML page (browser view of a JSON url); unwrap it and show a snippet if it is still not JSON */
