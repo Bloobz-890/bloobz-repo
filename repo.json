@@ -20,6 +20,24 @@
       "version": 4,
       "status": "beta",
       "url": "plugins/animepahe.js"
+    },
+    {
+      "id": "donghuastream",
+      "name": "DonghuaStream",
+      "description": "Donghua (Chinese anime), SUB",
+      "lang": "en",
+      "version": 1,
+      "status": "beta",
+      "url": "plugins/donghuastream.js"
+    },
+    {
+      "id": "anikoto",
+      "name": "Anikoto",
+      "description": "Anikoto.cz, SUB and DUB, M3U8",
+      "lang": "en",
+      "version": 1,
+      "status": "beta",
+      "url": "plugins/anikoto.js"
     }
   ]
 }
