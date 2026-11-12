@@ -2,7 +2,7 @@
 BZ.register({
   id: 'animexin',
   name: 'Animexin',
-  version: 4,
+  version: 5,
   base: 'https://animexin.dev',
   test: 'soul land',
 
@@ -37,12 +37,30 @@ BZ.register({
     };
   },
 
+
+  cards(d, label) {
+    let list = [...d.querySelectorAll('.listupd article, .listupd .bs, article.bs, .bsx')].map(x => this.card(x.closest('article, .bs') || x)).filter(x => x.id && x.title);
+    if (!list.length) {
+      const seen = {};
+      d.querySelectorAll('a[href]').forEach(a => {
+        const img = a.querySelector('img'); if (!img) { return; }
+        let p; try { p = new URL(a.getAttribute('href'), this.base); } catch (e) { return; }
+        if (p.origin !== new URL(this.base).origin || p.pathname.length < 3 || /^\/(page|genre|tag|category|az-lists|season|studio|author|wp-)/.test(p.pathname) || seen[p.pathname]) { return; }
+        seen[p.pathname] = 1;
+        const title = (a.getAttribute('title') || img.getAttribute('alt') || a.textContent || '').trim();
+        if (title) { list.push({ id: p.pathname, title, poster: img.getAttribute('data-src') || img.getAttribute('src') || '', badge: '' }); }
+      });
+    }
+    if (!list.length) { BZ.log((label || 'cards') + ': nothing found. classes: ' + [...new Set([...d.querySelectorAll('[class]')].slice(0, 400).map(e => e.className).filter(c => typeof c === 'string'))].slice(0, 25).join(' | ').slice(0, 400)); }
+    return list;
+  },
+
   async home() {
     const d = await this.get('/');
     const rows = [];
     d.querySelectorAll('.bixbox').forEach(box => {
       const h = box.querySelector('.releases h2, .releases h3');
-      const items = [...box.querySelectorAll('.listupd article')].map(x => this.card(x)).filter(x => x.id);
+      const items = this.cards(box, 'home');
       if (h && items.length) { rows.push({ title: h.textContent.trim(), items }); }
     });
     return { rows };
@@ -50,7 +68,7 @@ BZ.register({
 
   async search(q, page) {
     const d = await this.get('/page/' + (page || 1) + '/?s=' + encodeURIComponent(q));
-    return [...d.querySelectorAll('.listupd article')].map(x => this.card(x)).filter(x => x.id);
+    return this.cards(d, 'search');
   },
 
   async details(id) {
