@@ -11,6 +11,25 @@ const EX = {
   host(u) { try { return new URL(u).origin; } catch (e) { return ''; } },
   type(u) { return /\.(m3u8|txt)(\?|$)/i.test(u) || /master\.txt/i.test(u) ? 'hls' : 'mp4'; },
   clean(u) { return String(u || '').replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&'); },
+  /* episode list of an AnimeStream series page: real episode numbers (never the list index), ascending, plus the "latest/first episode" buttons the list can miss */
+  eplist(d, base) {
+    const out = [], seen = {};
+    const num = (t, h) => {
+      let m = String(t || '').match(/(?:eps?|episode)\.?\s*(\d+(?:\.\d+)?)/i) || String(h || '').match(/-(?:episode|ep)-(\d+(?:\.\d+)?)/i) || String(t || '').match(/^\s*(\d+(?:\.\d+)?)\s*$/);
+      return m ? m[1] : '';
+    };
+    const add = (a, t, li) => {
+      if (!a) { return; }
+      const href = a.getAttribute('href'); if (!href) { return; }
+      const id = new URL(href, base).pathname; if (seen[id]) { return; }
+      const n = num((li && (li.querySelector('.epl-num') || {}).textContent) || t, href) || num(t, href);
+      seen[id] = 1; out.push({ id, number: n, title: ((li && (li.querySelector('.epl-title') || {}).textContent) || '').trim() });
+    };
+    d.querySelectorAll('.eplister li').forEach(li => add(li.querySelector('a'), (li.querySelector('a') || {}).textContent, li));
+    if (out.length) { d.querySelectorAll('.lastend a[href], .inepcx a[href]').forEach(a => add(a, a.textContent)); }
+    out.forEach((e, i) => { if (e.number === '') { e.number = String(out.length - i); } });
+    return out.sort((a, b) => parseFloat(a.number) - parseFloat(b.number));
+  },
   /* JSON, also when a browser wrapped it in <html><pre>..</pre> (hidden-browser fallback) */
   json(t) {
     t = String(t || '').trim();
@@ -309,13 +328,7 @@ BZ.register({
     return this.cards(d, 'search');
   },
 
-  /* episode list of a series page (newest first on the site, so reversed) */
-  eplist(d) {
-    return [...d.querySelectorAll('.eplister li')].map(li => {
-      const a = li.querySelector('a');
-      return a ? { id: new URL(a.getAttribute('href'), this.base).pathname, number: (li.getAttribute('data-index') || (li.querySelector('.epl-num') || {}).textContent || '').toString().trim(), title: ((li.querySelector('.epl-title') || {}).textContent || '').trim() } : null;
-    }).filter(Boolean).reverse();
-  },
+  eplist(d) { return EX.eplist(d, this.base); },
 
   async details(id) {
     let d = await this.get(id), eps = this.eplist(d);
