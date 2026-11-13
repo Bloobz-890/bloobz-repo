@@ -109,8 +109,23 @@ const EX = {
 
   async rumble(id, name) {
     const r = await BZ.get('https://rumble.com/embedJS/u3/?request=video&ver=2&v=' + id, { referer: 'https://rumble.com/' });
-    const j = this.json(r.body); if (!j) { BZ.log('rumble: not json (' + r.status + ')'); return []; }
-    const ua = j.ua || {}, hd = { referer: 'https://rumble.com/' }, out = [];
+    let j = this.json(r.body);
+    const hd = { referer: 'https://rumble.com/' }, out = [];
+    if (!j || !j.ua) {
+      BZ.log('rumble: embedJS gave ' + r.status + ' ' + String(r.body || '').slice(0, 70).replace(/\s+/g, ' ') + ' - trying the embed page');
+      const pr = await BZ.get('https://rumble.com/embed/' + id + '/', { referer: 'https://rumble.com/' });
+      const pb = String(pr.body || '').replace(/\\\//g, '/');
+      const seen = {};
+      (pb.match(/https?:\/\/[^"'\s<>\\]+?\.(?:mp4|m3u8)[^"'\s<>\\]*/g) || []).forEach(u => {
+        if (seen[u]) { return; } seen[u] = 1;
+        const h = (u.match(/(\d{3,4})p?[._\/-]/) || [])[1];
+        out.push({ name: name + (h ? ' ' + h + 'p' : ''), url: u, type: /\.m3u8/.test(u) ? 'hls' : 'mp4', headers: hd, h: parseInt(h) || 0 });
+      });
+      out.sort((x, y) => (y.type === 'mp4') - (x.type === 'mp4') || y.h - x.h);
+      if (!out.length) { BZ.log('rumble: embed page ' + pr.status + ', ' + pb.length + ' chars, no video link'); }
+      return out;
+    }
+    const ua = j.ua || {};
     /* every mp4 quality (best first, e.g. 2160p / 1440p / 1080p), plus the adaptive HLS */
     const mp4 = [];
     Object.keys(ua.mp4 || {}).filter(k => ua.mp4[k] && ua.mp4[k].url).forEach(k => {
