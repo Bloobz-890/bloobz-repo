@@ -91,6 +91,34 @@ BZ.register({
     };
   },
 
+  /* Turn an embed page into a direct stream when we know the host (so it plays in the native player) */
+  async resolve(src, name) {
+    const type = u => /\.m3u8(\?|$)/i.test(u) ? 'hls' : 'mp4';
+    const best = o => { let k = Object.keys(o || {}).filter(x => o[x] && o[x].url).sort((a, b) => (parseInt(b) || 0) - (parseInt(a) || 0)); return k.length ? o[k[0]].url : ''; };
+    let m;
+    try {
+      if ((m = src.match(/rumble\.com\/embed\/(v[a-z0-9]+)/i))) {
+        const r = await BZ.get('https://rumble.com/embedJS/u3/?request=video&ver=2&v=' + m[1], { referer: 'https://rumble.com/' });
+        const j = this.parse(this.fix(r.body)), ua = j.ua || {};
+        const u = (ua.hls && ua.hls.auto && ua.hls.auto.url) || (j.u && j.u.hls && j.u.hls.url) || best(ua.mp4) || (j.u && j.u.mp4 && j.u.mp4.url) || '';
+        if (u) { return { name: name, url: u, type: type(u), headers: { referer: 'https://rumble.com/' } }; }
+        BZ.log('rumble: no link in ' + Object.keys(j).join(','));
+      } else if ((m = src.match(/ok\.ru\/videoembed\/(\d+)/i))) {
+        const r = await BZ.get('https://ok.ru/videoembed/' + m[1] + '?nochat=1', { referer: this.base + '/' });
+        const body = this.fix(r.body);
+        const o = body.match(/data-options="([^"]+)"/i);
+        if (!o) { BZ.log('ok.ru: no options, ' + body.length + ' chars'); return null; }
+        const opt = JSON.parse(o[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+        let md = opt.flashvars && opt.flashvars.metadata; if (typeof md === 'string') { md = JSON.parse(md); }
+        md = md || {};
+        const u = md.hlsManifestUrl || md.hlsMasterPlaylistUrl || md.ondemandHls || ((md.videos || []).slice().reverse().find(v => v.url) || {}).url || '';
+        if (u) { return { name: name, url: u, type: type(u), headers: { referer: 'https://ok.ru/' } }; }
+        BZ.log('ok.ru: no link in metadata ' + Object.keys(md).join(','));
+      }
+    } catch (e) { BZ.log('resolve ' + name + ': ' + e.message); }
+    return null;
+  },
+
   async streams(id) {
     const d = await this.get(id);
     const out = [];
@@ -112,7 +140,9 @@ BZ.register({
           if (auto && auto.url) { out.push({ name: name + ' (Dailymotion)', url: auto.url, type: 'hls', headers: { referer: 'https://www.dailymotion.com/' } }); continue; }
         } catch (e) { BZ.log('dailymotion: ' + e.message); }
       }
-      out.push({ name, url: src, type: 'embed' });
+      const rs = await this.resolve(src, name);
+      if (rs) { out.push(rs); }
+      out.push({ name: rs ? name + ' (web)' : name, url: src, type: 'embed' });
     }
     return out;
   }
