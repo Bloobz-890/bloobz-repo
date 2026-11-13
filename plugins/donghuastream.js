@@ -63,6 +63,15 @@ const EX = {
     try { Object.keys((j.subtitles && j.subtitles.data) || {}).forEach(k => { const s = j.subtitles.data[k]; (s.urls || []).forEach(u => subs.push({ lang: s.label || k, url: u })); }); } catch (e) {}
     const out = [];
     ((j.qualities && j.qualities.auto) || []).forEach(q => { if (q.url && /\.m3u8/.test(q.url)) { out.push({ name, url: q.url, type: 'hls', subs }); } });
+    /* check the manifest from the phone too, so the Test log shows why a native player would fail */
+    if (out.length) {
+      try {
+        const mr = await BZ.get(out[0].url, { referer: embed });
+        const mb = String(mr.body || '');
+        BZ.log('dailymotion manifest: status ' + mr.status + ', ' + (mb.indexOf('#EXTM3U') === 0 ? 'ok, ' + (mb.match(/#EXT-X-STREAM-INF/g) || []).length + ' qualities' : 'not a playlist: ' + mb.slice(0, 60).replace(/\s+/g, ' ')));
+      } catch (e) { BZ.log('dailymotion manifest: ' + e.message); }
+      BZ.log('dailymotion link: ' + out[0].url.slice(0, 90));
+    }
     if (!out.length) { BZ.log('dailymotion: no m3u8 (' + Object.keys(j).join(',') + (j.error ? ', ' + (j.error.title || j.error.message || '') : '') + ')'); }
     return out;
   },
