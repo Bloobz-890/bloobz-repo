@@ -41,18 +41,21 @@ const EX = {
     return { urls: urls.filter((u, i) => urls.indexOf(u) === i), subs };
   },
 
+  /* the only servers we use (same as the CloudStream plugins): Dailymotion / GeoDailymotion, Rumble, ok.ru, Doodstream family */
+  DOOD: /(?:^|\/\/|\.)(?:dood[a-z0-9]*|d0+d|d000d|ds2(?:play|video)|dsvplay|vide0|vvide0|myvidplay|playmogo|do[o0]+d)\.[a-z]{2,}/i,
+  allowed(src) { return /dailymotion\.com|ok\.ru|odnoklassniki\.ru|rumble\.com/i.test(src) || this.DOOD.test(src); },
+
   async resolve(src, name, referer) {
     referer = referer || '';
     try {
       src = String(src || '');
       if (src.indexOf('//') === 0) { src = 'https:' + src; }
       let m;
-      if ((m = src.match(/dailymotion\.com\/(?:embed\/)?video\/([a-z0-9]+)/i) || src.match(/geo\.dailymotion\.com\/player.*video=([a-z0-9]+)/i))) { return await this.dailymotion(m[1], name); }
+      if ((m = src.match(/dailymotion\.com\/(?:embed\/)?video\/([a-z0-9]+)/i) || src.match(/geo\.dailymotion\.com\/player.*video=([a-z0-9]+)/i) || src.match(/dai\.ly\/([a-z0-9]+)/i))) { return await this.dailymotion(m[1], name); }
       if (/ok\.ru|odnoklassniki\.ru/i.test(src)) { return await this.okru(src, name); }
       if ((m = src.match(/rumble\.com\/embed\/(v[a-z0-9]+)/i))) { return await this.rumble(m[1], name); }
       if (/vkvideo\.ru|vk\.com\/video/i.test(src)) { return await this.vk(src, name); }
-      if (/mega\.nz|mega\.io/i.test(src)) { return []; }
-      return await this.packed(src, name, referer);
+      if (this.DOOD.test(src)) { return await this.doodFull(src, name, referer); }
     } catch (e) { BZ.log('extract ' + name + ': ' + (e && e.message || e)); }
     return [];
   },
@@ -116,7 +119,8 @@ const EX = {
     });
     if (!mp4.length && j.u && j.u.mp4 && j.u.mp4.url) { mp4.push({ h: 0, name, url: j.u.mp4.url, type: 'mp4', headers: hd }); }
     mp4.sort((x, y) => y.h - x.h);
-    const hls = (ua.hls && ua.hls.auto && ua.hls.auto.url) || (j.u && j.u.hls && j.u.hls.url) || '';
+    let hls = (ua.hls && ua.hls.auto && ua.hls.auto.url) || (j.u && j.u.hls && j.u.hls.url) || '';
+    if (/\/hls-vod\//.test(hls) && /playlist\.m3u8/.test(hls) && hls.indexOf('?') < 0) { hls += '?u=0&b=0'; }
     if (mp4.length) { out.push(mp4[0]); }
     if (hls) { out.push({ name: name + ' Auto', url: hls, type: 'hls', headers: hd }); }
     mp4.slice(1).forEach(x => out.push(x));
@@ -138,6 +142,14 @@ const EX = {
   },
 
   /* Doodstream family: embed page -> /pass_md5/ token -> direct mp4 */
+  async doodFull(src, name, referer) {
+    const embed = src.replace('/d/', '/e/');
+    const r = await BZ.get(embed, { referer: referer ? referer + '/' : this.host(embed) + '/' });
+    const out = await this.dood(embed, name, this.fix(r.body));
+    if (!out) { BZ.log('dood: no pass_md5 on ' + this.host(embed) + ' (' + String(r.body || '').length + ' chars)'); }
+    return out || [];
+  },
+
   async dood(src, name, body0) {
     const embed = src.replace('/d/', '/e/'), host = this.host(embed);
     const md = body0.match(/\/pass_md5\/[^']*/);
@@ -324,6 +336,7 @@ BZ.register({
     const out = [], embeds = [];
     for (const it of items) {
       const src = BZ.abs(it.src, this.base), name = it.name;
+      if (!EX.allowed(src)) { continue; }
       const rs = await EX.resolve(src, name, this.base);
       rs.forEach(x => out.push(x));
       if (!rs.length) { embeds.push({ name, url: src, type: 'embed' }); }
