@@ -254,22 +254,38 @@ BZ.register({
     return this.cards(d, 'search');
   },
 
-  async details(id) {
-    const d = await this.get(id);
-    const txt = s => { const e = d.querySelector(s); return e ? e.textContent.trim() : ''; };
-    const img = d.querySelector('.thumb') || d.querySelector('.thumb img');
-    const eps = [...d.querySelectorAll('.eplister li')].map(li => {
+  /* episode list of a series page (newest first on the site, so reversed) */
+  eplist(d) {
+    return [...d.querySelectorAll('.eplister li')].map(li => {
       const a = li.querySelector('a');
       return a ? { id: new URL(a.getAttribute('href'), this.base).pathname, number: (li.getAttribute('data-index') || (li.querySelector('.epl-num') || {}).textContent || '').toString().trim(), title: ((li.querySelector('.epl-title') || {}).textContent || '').trim() } : null;
     }).filter(Boolean).reverse();
+  },
+
+  async details(id) {
+    let d = await this.get(id), eps = this.eplist(d);
+    if (!eps.length) {
+      /* home cards often point at an episode page: go to its series page */
+      const cand = [];
+      d.querySelectorAll('.nvsc a[href], .ts-breadcrumb a[href*="/anime/"], a[itemprop="item"][href*="/anime/"], .infox a[href*="/anime/"], .det a[href*="/anime/"]').forEach(a => cand.push(new URL(a.getAttribute('href'), this.base).pathname));
+      const m = String(id).match(/\/([^/]+?)-(?:episode|ep)-\d+/i);
+      if (m) { cand.push('/anime/' + m[1] + '/'); }
+      for (const c of cand.filter((x, i) => x && x !== id && cand.indexOf(x) === i).slice(0, 3)) {
+        try { const d2 = await this.get(c), e2 = this.eplist(d2); if (e2.length) { d = d2; eps = e2; BZ.log('series page: ' + c); break; } } catch (e) {}
+      }
+    }
+    const txt = s => { const e = d.querySelector(s); return e ? e.textContent.trim() : ''; };
+    const img = d.querySelector('.thumb') || d.querySelector('.thumb img');
+    if (!eps.length) { eps.push({ id, number: '1', title: txt('h1.entry-title') }); }
     return {
       title: txt('h1.entry-title'),
-      poster: this.pic(el),
+      poster: this.pic(img),
       description: txt('.entry-content'),
       genres: [...d.querySelectorAll('.genxed a')].map(a => a.textContent.trim()),
       episodes: eps
     };
   },
+
 
   async streams(id) {
     const d = await this.get(id);
