@@ -1,4 +1,170 @@
 /* Animexin plugin for BlooBZ. Site uses the common AnimeStream WordPress theme. */
+/*EXT-START*/
+/* BlooBZ shared video-host extractors.
+   Logic ported from the CloudStream extractors (GPL-3.0, https://github.com/recloudstream/cloudstream).
+   Edit this file, then run `python3 build.py` to copy it into every plugin. */
+const EX = {
+  UA: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0',
+  fix(b) { b = String(b || ''); return /<[a-z][a-z0-9]*\+[a-z-]+=/i.test(b) ? b.replace(/\+/g, ' ') : b; },
+  host(u) { try { return new URL(u).origin; } catch (e) { return ''; } },
+  type(u) { return /\.(m3u8|txt)(\?|$)/i.test(u) || /master\.txt/i.test(u) ? 'hls' : 'mp4'; },
+  clean(u) { return String(u || '').replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&'); },
+  json(t) { try { return JSON.parse(String(t || '').trim()); } catch (e) { return null; } },
+
+  /* Dean Edwards packer (pure string work, no eval). Unpacks every packed script found in the page. */
+  unpack(html) {
+    let out = '';
+    const re = /\}\('([\s\S]*?)',\s*(\d+),\s*(\d+),\s*'([\s\S]*?)'\.split\('\|'\)/g;
+    let m;
+    while ((m = re.exec(html))) {
+      let p = m[1].replace(/\\'/g, "'"), a = parseInt(m[2], 10), c = parseInt(m[3], 10);
+      const k = m[4].split('|');
+      const enc = n => (n < a ? '' : enc(Math.floor(n / a))) + ((n = n % a) > 35 ? String.fromCharCode(n + 29) : n.toString(36));
+      const d = {};
+      while (c--) { d[enc(c)] = k[c] || enc(c); }
+      out += '\n' + p.replace(/\b\w+\b/g, w => (d[w] !== undefined ? d[w] : w));
+    }
+    return out;
+  },
+
+  /* JWPlayer style: sources:[{file:"..."}] , falling back to any .m3u8 / master.txt string */
+  jw(text) {
+    const urls = [];
+    const sm = text.match(/"?sources"?\s*:\s*(\[[\s\S]*?\])/);
+    if (sm) { const re = /"?file"?\s*:\s*"([^"]+)"/g; let m; while ((m = re.exec(sm[1]))) { urls.push(this.clean(m[1])); } }
+    if (!urls.length) { const re = /[:=]\s*"([^"\s]+(?:\.m3u8|master\.txt)[^"\s]*)/g; let m; while ((m = re.exec(text))) { urls.push(this.clean(m[1])); } }
+    const subs = [];
+    const tm = text.match(/"?tracks"?\s*:\s*(\[[\s\S]*?\])/);
+    if (tm) { const re = /\{[^{}]*\}/g; let m; while ((m = re.exec(tm[1]))) { const f = m[0].match(/"?file"?\s*:\s*"([^"]+)"/), l = m[0].match(/"?label"?\s*:\s*"([^"]*)"/); if (f && /\.(vtt|srt)/i.test(f[1])) { subs.push({ lang: l ? l[1] : 'Sub', url: this.clean(f[1]) }); } } }
+    return { urls: urls.filter((u, i) => urls.indexOf(u) === i), subs };
+  },
+
+  async resolve(src, name, referer) {
+    referer = referer || '';
+    try {
+      src = String(src || '');
+      if (src.indexOf('//') === 0) { src = 'https:' + src; }
+      let m;
+      if ((m = src.match(/dailymotion\.com\/(?:embed\/)?video\/([a-z0-9]+)/i) || src.match(/geo\.dailymotion\.com\/player.*video=([a-z0-9]+)/i))) { return await this.dailymotion(m[1], name); }
+      if (/ok\.ru|odnoklassniki\.ru/i.test(src)) { return await this.okru(src, name); }
+      if ((m = src.match(/rumble\.com\/embed\/(v[a-z0-9]+)/i))) { return await this.rumble(m[1], name); }
+      if (/vkvideo\.ru|vk\.com\/video/i.test(src)) { return await this.vk(src, name); }
+      if (/mega\.nz|mega\.io/i.test(src)) { return []; }
+      return await this.packed(src, name, referer);
+    } catch (e) { BZ.log('extract ' + name + ': ' + (e && e.message || e)); }
+    return [];
+  },
+
+  async dailymotion(id, name) {
+    const embed = 'https://www.dailymotion.com/embed/video/' + id;
+    const r = await BZ.get('https://www.dailymotion.com/player/metadata/video/' + id, { referer: embed });
+    const j = this.json(r.body); if (!j) { BZ.log('dailymotion: not json (' + r.status + ')'); return []; }
+    const subs = [];
+    try { Object.keys((j.subtitles && j.subtitles.data) || {}).forEach(k => { const s = j.subtitles.data[k]; (s.urls || []).forEach(u => subs.push({ lang: s.label || k, url: u })); }); } catch (e) {}
+    const out = [];
+    ((j.qualities && j.qualities.auto) || []).forEach(q => { if (q.url && /\.m3u8/.test(q.url)) { out.push({ name, url: q.url, type: 'hls', subs }); } });
+    if (!out.length) { BZ.log('dailymotion: no m3u8 (' + Object.keys(j).join(',') + (j.error ? ', ' + (j.error.title || j.error.message || '') : '') + ')'); }
+    return out;
+  },
+
+  async okru(src, name) {
+    const embed = src.replace(/\/video\//, '/videoembed/').replace(/\/videoembed\/(\d+).*/, '/videoembed/$1?nochat=1');
+    const r = await BZ.get(embed, { referer: 'https://ok.ru/' });
+    let body = this.fix(r.body);
+    const out = [], hd = { referer: 'https://ok.ru/', origin: 'https://ok.ru' };
+    const o = body.match(/data-options="([^"]+)"/i);
+    if (o) {
+      try {
+        const opt = JSON.parse(o[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
+        let md = opt.flashvars && opt.flashvars.metadata; if (typeof md === 'string') { md = JSON.parse(md); }
+        md = md || {};
+        const h = md.hlsManifestUrl || md.hlsMasterPlaylistUrl || md.ondemandHls;
+        if (h) { out.push({ name, url: h, type: 'hls', headers: hd }); }
+      } catch (e) { BZ.log('ok.ru options: ' + e.message); }
+    }
+    if (!out.length) {
+      body = body.replace(/\\&quot;/g, '"').replace(/\\\\/g, '\\').replace(/\\u([0-9A-Fa-f]{4})/g, (x, h) => String.fromCharCode(parseInt(h, 16)));
+      const vm = body.match(/"videos":(\[[^\]]*\])/);
+      const vs = vm ? this.json(vm[1]) : null;
+      const q = { MOBILE: '144p', LOWEST: '240p', LOW: '360p', SD: '480p', HD: '720p', FULL: '1080p', QUAD: '1440p', ULTRA: '4k' };
+      (vs || []).slice().reverse().forEach(v => { if (v && v.url) { out.push({ name: name + ' ' + (q[String(v.name).toUpperCase()] || v.name), url: v.url.indexOf('//') === 0 ? 'https:' + v.url : v.url, type: 'mp4', quality: q[String(v.name).toUpperCase()] || '', headers: hd }); } });
+    }
+    if (!out.length) { BZ.log('ok.ru: nothing found (' + body.length + ' chars)'); }
+    return out;
+  },
+
+  async rumble(id, name) {
+    const r = await BZ.get('https://rumble.com/embedJS/u3/?request=video&ver=2&v=' + id, { referer: 'https://rumble.com/' });
+    const j = this.json(r.body); if (!j) { BZ.log('rumble: not json (' + r.status + ')'); return []; }
+    const ua = j.ua || {}, hd = { referer: 'https://rumble.com/' }, out = [];
+    if (ua.hls && ua.hls.auto && ua.hls.auto.url) { out.push({ name, url: ua.hls.auto.url, type: 'hls', headers: hd }); }
+    else if (j.u && j.u.hls && j.u.hls.url) { out.push({ name, url: j.u.hls.url, type: 'hls', headers: hd }); }
+    if (!out.length) {
+      Object.keys(ua.mp4 || {}).filter(k => ua.mp4[k] && ua.mp4[k].url).sort((a, b) => (parseInt(b) || 0) - (parseInt(a) || 0)).forEach(k => out.push({ name: name + ' ' + k + 'p', url: ua.mp4[k].url, type: 'mp4', quality: k + 'p', headers: hd }));
+    }
+    if (!out.length && j.u && j.u.mp4 && j.u.mp4.url) { out.push({ name, url: j.u.mp4.url, type: 'mp4', headers: hd }); }
+    if (!out.length) { BZ.log('rumble: no link (' + Object.keys(j).join(',') + ')'); }
+    return out;
+  },
+
+  async vk(src, name) {
+    const r = await BZ.get(src, { referer: 'https://vkvideo.ru/', ua: this.UA });
+    const body = String(r.body || '');
+    const hd = { referer: 'https://vkvideo.ru/', ua: this.UA }, out = [];
+    let m; const re = /"url([0-9]+)":"([^"]*)"/gi;
+    while ((m = re.exec(body))) { out.push({ name: name + ' ' + m[1] + 'p', url: m[2].replace(/\\/g, ''), type: 'mp4', quality: m[1] + 'p', headers: hd }); }
+    out.sort((a, b) => parseInt(b.quality) - parseInt(a.quality));
+    const h = body.match(/"hls":"([^"]*)"/i);
+    if (h) { out.unshift({ name, url: h[1].replace(/\\/g, ''), type: 'hls', headers: hd }); }
+    if (!out.length) { BZ.log('vk: nothing found (' + body.length + ' chars)'); }
+    return out;
+  },
+
+  /* Doodstream family: embed page -> /pass_md5/ token -> direct mp4 */
+  async dood(src, name, body0) {
+    const embed = src.replace('/d/', '/e/'), host = this.host(embed);
+    const md = body0.match(/\/pass_md5\/[^']*/);
+    if (!md) { return null; }
+    const r = await BZ.get(host + md[0], { referer: embed });
+    const al = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let rnd = ''; for (let i = 0; i < 10; i++) { rnd += al[Math.floor(Math.random() * al.length)]; }
+    const u = String(r.body || '').trim() + rnd + '?token=' + md[0].split('/').pop() + '&expiry=' + Date.now();
+    if (!/^https?:/i.test(u)) { BZ.log('dood: bad link'); return []; }
+    return [{ name, url: u, type: 'mp4', headers: { referer: host + '/' } }];
+  },
+
+  /* StreamWish / Filemoon / Vtbe / VidHide / Mp4Upload / MixDrop / Dood and other generic players */
+  async packed(src, name, referer) {
+    if (!/^https?:/i.test(src)) { return []; }
+    let page = src.replace(/(streamwish[^/]*|wish[^/]*)\/f\//i, '$1/');
+    let host = this.host(src);
+    let r = await BZ.get(page, { referer: referer ? referer + '/' : host + '/' });
+    let body = this.fix(r.body);
+    if (/\/pass_md5\//.test(body)) { return (await this.dood(src, name, body)) || []; }
+    const fi = body.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+    if (fi && !/\.(m3u8|mp4)/.test(body) && !/p,a,c,k,e,d/.test(body)) {
+      const ifr = new URL(this.clean(fi[1]), page).href;
+      r = await BZ.get(ifr, { referer: page });
+      body = this.fix(r.body); host = this.host(ifr) || host;
+    }
+    const pool = body + '\n' + this.unpack(body);
+    const hd = { referer: this.host(src) + '/', origin: this.host(src) };
+    const jw = this.jw(pool);
+    const out = jw.urls.filter(u => /^(https?:)?\/\//i.test(u) || u[0] === '/').map(u => ({ name, url: u.indexOf('//') === 0 ? 'https:' + u : (u[0] === '/' ? host + u : u), type: this.type(u), headers: hd, subs: jw.subs }));
+    if (!out.length) {
+      const mp4 = pool.match(/player\.src\(\s*(?:\{[\s\S]*?src:\s*)?"([^"]+)"/) || pool.match(/wurl[\s\S]{0,20}?=\s*"([^"]+)";/);
+      if (mp4) { const u = mp4[1].indexOf('//') === 0 ? 'https:' + mp4[1] : mp4[1]; out.push({ name, url: u, type: this.type(u), headers: hd }); }
+    }
+    if (!out.length) {
+      const any = (pool.replace(/\\\//g, '/').match(/https?:\/\/[^'"\s<>\\]+\.m3u8[^'"\s<>\\]*/) || pool.replace(/\\\//g, '/').match(/https?:\/\/[^'"\s<>\\]+\.mp4[^'"\s<>\\]*/) || [])[0];
+      if (any) { out.push({ name, url: any, type: this.type(any), headers: hd }); }
+    }
+    if (!out.length) { BZ.log('player ' + host + ': no video link (' + body.length + ' chars)'); }
+    return out;
+  }
+};
+/*EXT-END*/
+
 BZ.register({
   id: 'animexin',
   name: 'Animexin',
@@ -91,79 +257,29 @@ BZ.register({
     };
   },
 
-  // Dean Edwards packer, the format Kwik uses. Pure string work, no eval.
-  unpack(html) {
-    const m = html.match(/\}\('([\s\S]*?)',\s*(\d+),\s*(\d+),\s*'([\s\S]*?)'\.split\('\|'\)/);
-    if (!m) { return ''; }
-    let p = m[1].replace(/\\'/g, "'"), a = parseInt(m[2], 10), c = parseInt(m[3], 10);
-    const k = m[4].split('|');
-    const enc = n => (n < a ? '' : enc(Math.floor(n / a))) + ((n = n % a) > 35 ? String.fromCharCode(n + 29) : n.toString(36));
-    const d = {};
-    while (c--) { d[enc(c)] = k[c] || enc(c); }
-    return p.replace(/\b\w+\b/g, w => (d[w] !== undefined ? d[w] : w));
-  },
-
-  /* Turn an embed page into a direct stream when we know the host (so it plays in the native player) */
-  async resolve(src, name) {
-    const type = u => /\.m3u8(\?|$)/i.test(u) ? 'hls' : 'mp4';
-    const best = o => { let k = Object.keys(o || {}).filter(x => o[x] && o[x].url).sort((a, b) => (parseInt(b) || 0) - (parseInt(a) || 0)); return k.length ? o[k[0]].url : ''; };
-    let m;
-    try {
-      if ((m = src.match(/rumble\.com\/embed\/(v[a-z0-9]+)/i))) {
-        const r = await BZ.get('https://rumble.com/embedJS/u3/?request=video&ver=2&v=' + m[1], { referer: 'https://rumble.com/' });
-        const j = this.parse(this.fix(r.body)), ua = j.ua || {};
-        const u = (ua.hls && ua.hls.auto && ua.hls.auto.url) || (j.u && j.u.hls && j.u.hls.url) || best(ua.mp4) || (j.u && j.u.mp4 && j.u.mp4.url) || '';
-        if (u) { return { name: name, url: u, type: type(u), headers: { referer: 'https://rumble.com/' } }; }
-        BZ.log('rumble: no link in ' + Object.keys(j).join(','));
-      } else if ((m = src.match(/ok\.ru\/videoembed\/(\d+)/i))) {
-        const r = await BZ.get('https://ok.ru/videoembed/' + m[1] + '?nochat=1', { referer: this.base + '/' });
-        const body = this.fix(r.body);
-        const o = body.match(/data-options="([^"]+)"/i);
-        if (!o) { BZ.log('ok.ru: no options, ' + body.length + ' chars'); return null; }
-        const opt = JSON.parse(o[1].replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#039;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>'));
-        let md = opt.flashvars && opt.flashvars.metadata; if (typeof md === 'string') { md = JSON.parse(md); }
-        md = md || {};
-        const u = md.hlsManifestUrl || md.hlsMasterPlaylistUrl || md.ondemandHls || ((md.videos || []).slice().reverse().find(v => v.url) || {}).url || '';
-        if (u) { return { name: name, url: u, type: type(u), headers: { referer: 'https://ok.ru/' } }; }
-        BZ.log('ok.ru: no link in metadata ' + Object.keys(md).join(','));
-      } else if (/^https?:/i.test(src) && !/mega\.nz|ok\.ru|rumble\.com|dailymotion/i.test(src)) {
-        /* any other player: read its page, unpack the packed script, look for a video link */
-        const host = new URL(src).origin + '/';
-        const r = await BZ.get(src, { referer: this.base + '/' });
-        const body = this.fix(r.body);
-        const pool = (body + ' ' + this.unpack(body)).replace(/\\\//g, '/').replace(/\\u0026/g, '&');
-        const u = (pool.match(/https?:\/\/[^'"\s<>\\]+\.m3u8[^'"\s<>\\]*/) || [])[0] || (pool.match(/https?:\/\/[^'"\s<>\\]+\.mp4[^'"\s<>\\]*/) || [])[0] || '';
-        if (u) { return { name, url: u, type: type(u), headers: { referer: host } }; }
-        BZ.log('player ' + host + ': no video link (' + body.length + ' chars)');
-      }
-    } catch (e) { BZ.log('resolve ' + name + ': ' + e.message); }
-    return null;
-  },
-
   async streams(id) {
     const d = await this.get(id);
+    const items = [];
+    d.querySelectorAll('select.mirror option, option[data-index]').forEach(o => {
+      const v = (o.getAttribute('value') || '').trim(); if (!v) { return; }
+      let src = '';
+      if (/^https?:\/\//i.test(v)) { src = v; }
+      else { try { const m = atob(v).match(/src=["']([^"']+)["']/i); if (m) { src = m[1]; } } catch (e) {} }
+      if (src) { items.push({ src, name: o.textContent.trim() || 'Server' }); }
+    });
+    if (!items.length) {
+      d.querySelectorAll('iframe[src], iframe[data-src], meta[itemprop=embedUrl]').forEach(x => {
+        const u = x.getAttribute('src') || x.getAttribute('data-src') || x.getAttribute('content');
+        if (u && /^(https?:)?\/\//i.test(u)) { items.push({ src: u.indexOf('//') === 0 ? 'https:' + u : u, name: 'Player ' + (items.length + 1) }); }
+      });
+    }
+    BZ.log('mirrors found: ' + items.length + ' (' + items.map(x => x.src.replace(/^https?:\/\//, '').slice(0, 25)).join(', ') + ')');
     const out = [];
-    for (const o of d.querySelectorAll('select.mirror option')) {
-      const v = o.getAttribute('value');
-      if (!v) { continue; }
-      let html = '';
-      try { html = atob(v); } catch (e) { continue; }
-      const m = html.match(/src=["']([^"']+)["']/i);
-      if (!m) { continue; }
-      const src = BZ.abs(m[1], this.base);
-      const name = o.textContent.trim() || 'Server';
-      const dm = src.match(/dailymotion\.com\/(?:embed\/)?video\/([a-z0-9]+)/i) || src.match(/geo\.dailymotion\.com\/player.*video=([a-z0-9]+)/i);
-      if (dm) {
-        try {
-          const r = await BZ.get('https://www.dailymotion.com/player/metadata/video/' + dm[1], { referer: 'https://www.dailymotion.com/' });
-          const j = this.parse(r.body);
-          const auto = j && j.qualities && j.qualities.auto && j.qualities.auto[0];
-          if (auto && auto.url) { out.push({ name: name + ' (Dailymotion)', url: auto.url, type: 'hls', headers: { referer: 'https://www.dailymotion.com/' } }); continue; }
-        } catch (e) { BZ.log('dailymotion: ' + e.message); }
-      }
-      const rs = await this.resolve(src, name);
-      if (rs) { out.push(rs); }
-      out.push({ name: rs ? name + ' (web)' : name, url: src, type: 'embed' });
+    for (const it of items) {
+      const src = BZ.abs(it.src, this.base), name = it.name;
+      const rs = await EX.resolve(src, name, this.base);
+      rs.forEach(x => out.push(x));
+      out.push({ name: rs.length ? name + ' (web)' : name, url: src, type: 'embed' });
     }
     return out;
   }
