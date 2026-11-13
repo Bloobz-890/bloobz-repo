@@ -246,7 +246,7 @@ BZ.register({
   name: 'DonghuaStream',
   version: 2,
   base: 'https://donghuastream.org',
-  test: 'soul land',
+  test: 'oriental martial academy',
 
   /* pages from the hidden browser can arrive with every space turned into '+': undo that so tags and classes work */
   fix(b) { b = String(b || ''); return /<[a-z][a-z0-9]*\+[a-z-]+=/i.test(b) ? b.replace(/\+/g, ' ') : b; },
