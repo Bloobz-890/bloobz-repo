@@ -11,7 +11,17 @@ const EX = {
   host(u) { try { return new URL(u).origin; } catch (e) { return ''; } },
   type(u) { return /\.(m3u8|txt)(\?|$)/i.test(u) || /master\.txt/i.test(u) ? 'hls' : 'mp4'; },
   clean(u) { return String(u || '').replace(/\\\//g, '/').replace(/\\u0026/g, '&').replace(/&amp;/g, '&'); },
-  json(t) { try { return JSON.parse(String(t || '').trim()); } catch (e) { return null; } },
+  /* JSON, also when a browser wrapped it in <html><pre>..</pre> (hidden-browser fallback) */
+  json(t) {
+    t = String(t || '').trim();
+    try { return JSON.parse(t); } catch (e) {}
+    if (t[0] === '<') {
+      const x = t.replace(/<[^>]+>/g, '').replace(/&quot;/g, '"').replace(/&amp;/g, '&').replace(/&#0?39;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+      const i = x.indexOf('{'), k = x.lastIndexOf('}');
+      if (i >= 0 && k > i) { try { return JSON.parse(x.slice(i, k + 1)); } catch (e) {} }
+    }
+    return null;
+  },
 
   /* Dean Edwards packer (pure string work, no eval). Unpacks every packed script found in the page. */
   unpack(html) {
@@ -116,11 +126,12 @@ const EX = {
       const pr = await BZ.get('https://rumble.com/embed/' + id + '/', { referer: 'https://rumble.com/' });
       const pb = String(pr.body || '').replace(/\\\//g, '/');
       const seen = {};
-      (pb.match(/https?:\/\/[^"'\s<>\\]+?\.(?:mp4|m3u8)[^"'\s<>\\]*/g) || []).forEach(u => {
-        if (seen[u]) { return; } seen[u] = 1;
-        const h = (u.match(/(\d{3,4})p?[._\/-]/) || [])[1];
+      const re = /"url"\s*:\s*"(https?:\/\/[^"]+?\.(?:mp4|m3u8)[^"]*)"([^{}]{0,200})/g; let mm;
+      while ((mm = re.exec(pb))) {
+        const u = mm[1]; if (seen[u]) { continue; } seen[u] = 1;
+        const h = (mm[2].match(/"h"\s*:\s*(\d{3,4})/) || [])[1];
         out.push({ name: name + (h ? ' ' + h + 'p' : ''), url: u, type: /\.m3u8/.test(u) ? 'hls' : 'mp4', headers: hd, h: parseInt(h) || 0 });
-      });
+      }
       out.sort((x, y) => (y.type === 'mp4') - (x.type === 'mp4') || y.h - x.h);
       if (!out.length) { BZ.log('rumble: embed page ' + pr.status + ', ' + pb.length + ' chars, no video link'); }
       return out;
