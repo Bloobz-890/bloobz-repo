@@ -193,6 +193,20 @@ BZ.register({
     try { return JSON.parse(t); } catch (e) { throw new Error('Site sent a page, not data: ' + String(body || '').replace(/\s+/g, ' ').slice(0, 90)); }
   },
 
+  /* real poster url: lazy-load attributes, srcset, or a plain <img> inside <noscript>; never a data: placeholder */
+  pic(root) {
+    if (!root) { return ''; }
+    const imgs = root.tagName === 'IMG' ? [root] : [...root.querySelectorAll('img')];
+    for (const im of imgs) {
+      for (const a of ['data-src', 'data-lazy-src', 'data-original', 'data-lazy', 'data-srcset', 'srcset', 'src']) {
+        let v = (im.getAttribute(a) || '').trim().split(/\s+/)[0];
+        if (v && !/^data:/i.test(v)) { return BZ.abs(v, this.base); }
+      }
+    }
+    const m = (root.innerHTML || '').match(/<noscript[^>]*>[\s\S]*?src=["']([^"']+)["']/i);
+    return m && !/^data:/i.test(m[1]) ? BZ.abs(m[1], this.base) : '';
+  },
+
   card(el) {
     const a = el.querySelector('a');
     const img = el.querySelector('img');
@@ -201,7 +215,7 @@ BZ.register({
     return {
       id: a ? new URL(a.getAttribute('href'), this.base).pathname : '',
       title: t ? t.textContent.trim() : (a ? (a.getAttribute('title') || '').trim() : ''),
-      poster: img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '',
+      poster: this.pic(el),
       badge: (el.querySelector('.epx') || {}).textContent ? el.querySelector('.epx').textContent.trim() : ''
     };
   },
@@ -217,7 +231,7 @@ BZ.register({
         if (p.origin !== new URL(this.base).origin || p.pathname.length < 3 || /^\/(page|genre|tag|category|az-lists|season|studio|author|wp-)/.test(p.pathname) || seen[p.pathname]) { return; }
         seen[p.pathname] = 1;
         const title = (a.getAttribute('title') || img.getAttribute('alt') || a.textContent || '').trim();
-        if (title) { list.push({ id: p.pathname, title, poster: img.getAttribute('data-src') || img.getAttribute('src') || '', badge: '' }); }
+        if (title) { list.push({ id: p.pathname, title, poster: this.pic(img), badge: '' }); }
       });
     }
     if (!list.length) { BZ.log((label || 'cards') + ': nothing found. classes: ' + [...new Set([...d.querySelectorAll('[class]')].slice(0, 400).map(e => e.className).filter(c => typeof c === 'string'))].slice(0, 25).join(' | ').slice(0, 400)); }
@@ -243,14 +257,14 @@ BZ.register({
   async details(id) {
     const d = await this.get(id);
     const txt = s => { const e = d.querySelector(s); return e ? e.textContent.trim() : ''; };
-    const img = d.querySelector('.thumb img');
+    const img = d.querySelector('.thumb') || d.querySelector('.thumb img');
     const eps = [...d.querySelectorAll('.eplister li')].map(li => {
       const a = li.querySelector('a');
       return a ? { id: new URL(a.getAttribute('href'), this.base).pathname, number: (li.getAttribute('data-index') || (li.querySelector('.epl-num') || {}).textContent || '').toString().trim(), title: ((li.querySelector('.epl-title') || {}).textContent || '').trim() } : null;
     }).filter(Boolean).reverse();
     return {
       title: txt('h1.entry-title'),
-      poster: img ? (img.getAttribute('data-src') || img.getAttribute('src') || '') : '',
+      poster: this.pic(el),
       description: txt('.entry-content'),
       genres: [...d.querySelectorAll('.genxed a')].map(a => a.textContent.trim()),
       episodes: eps
