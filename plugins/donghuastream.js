@@ -108,12 +108,18 @@ const EX = {
     const r = await BZ.get('https://rumble.com/embedJS/u3/?request=video&ver=2&v=' + id, { referer: 'https://rumble.com/' });
     const j = this.json(r.body); if (!j) { BZ.log('rumble: not json (' + r.status + ')'); return []; }
     const ua = j.ua || {}, hd = { referer: 'https://rumble.com/' }, out = [];
-    if (ua.hls && ua.hls.auto && ua.hls.auto.url) { out.push({ name, url: ua.hls.auto.url, type: 'hls', headers: hd }); }
-    else if (j.u && j.u.hls && j.u.hls.url) { out.push({ name, url: j.u.hls.url, type: 'hls', headers: hd }); }
-    if (!out.length) {
-      Object.keys(ua.mp4 || {}).filter(k => ua.mp4[k] && ua.mp4[k].url).sort((a, b) => (parseInt(b) || 0) - (parseInt(a) || 0)).forEach(k => out.push({ name: name + ' ' + k + 'p', url: ua.mp4[k].url, type: 'mp4', quality: k + 'p', headers: hd }));
-    }
-    if (!out.length && j.u && j.u.mp4 && j.u.mp4.url) { out.push({ name, url: j.u.mp4.url, type: 'mp4', headers: hd }); }
+    /* every mp4 quality (best first, e.g. 2160p / 1440p / 1080p), plus the adaptive HLS */
+    const mp4 = [];
+    Object.keys(ua.mp4 || {}).filter(k => ua.mp4[k] && ua.mp4[k].url).forEach(k => {
+      const m = ua.mp4[k].meta || {}, h = parseInt(m.h) || parseInt(k) || 0;
+      mp4.push({ h, name: name + ' ' + (h || k) + 'p', url: ua.mp4[k].url, type: 'mp4', quality: (h || k) + 'p', headers: hd });
+    });
+    if (!mp4.length && j.u && j.u.mp4 && j.u.mp4.url) { mp4.push({ h: 0, name, url: j.u.mp4.url, type: 'mp4', headers: hd }); }
+    mp4.sort((x, y) => y.h - x.h);
+    const hls = (ua.hls && ua.hls.auto && ua.hls.auto.url) || (j.u && j.u.hls && j.u.hls.url) || '';
+    if (mp4.length) { out.push(mp4[0]); }
+    if (hls) { out.push({ name: name + ' Auto', url: hls, type: 'hls', headers: hd }); }
+    mp4.slice(1).forEach(x => out.push(x));
     if (!out.length) { BZ.log('rumble: no link (' + Object.keys(j).join(',') + ')'); }
     return out;
   },
