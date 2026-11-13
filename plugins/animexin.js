@@ -28,7 +28,9 @@ const EX = {
     d.querySelectorAll('.eplister li').forEach(li => add(li.querySelector('a'), (li.querySelector('a') || {}).textContent, li));
     if (out.length) { d.querySelectorAll('.lastend a[href], .inepcx a[href]').forEach(a => add(a, a.textContent)); }
     out.forEach((e, i) => { if (e.number === '') { e.number = String(out.length - i); } });
-    return out.sort((a, b) => parseFloat(a.number) - parseFloat(b.number));
+    const srt = out.sort((a, b) => parseFloat(a.number) - parseFloat(b.number));
+    try { BZ.log('episodes: ' + srt.length + ' (' + (srt[0] || {}).number + ' .. ' + (srt[srt.length - 1] || {}).number + '), lastend=' + (((d.querySelector('.lastend a') || {}).getAttribute || (() => ''))).call(d.querySelector('.lastend a') || {}, 'href') + ', page=' + (d.documentElement ? d.documentElement.outerHTML.length : 0) + 'b'); } catch (e) {}
+    return srt;
   },
   /* JSON, also when a browser wrapped it in <html><pre>..</pre> (hidden-browser fallback) */
   json(t) {

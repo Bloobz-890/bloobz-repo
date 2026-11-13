@@ -8,7 +8,7 @@
       "name": "Animexin",
       "description": "Anime and donghua, SUB",
       "lang": "en",
-      "version": 24,
+      "version": 25,
       "status": "beta",
       "url": "plugins/animexin.js"
     },
@@ -26,7 +26,7 @@
       "name": "DonghuaStream",
       "description": "Donghua (Chinese anime), SUB",
       "lang": "en",
-      "version": 21,
+      "version": 22,
       "status": "beta",
       "url": "plugins/donghuastream.js"
     },
