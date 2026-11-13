@@ -91,6 +91,18 @@ BZ.register({
     };
   },
 
+  // Dean Edwards packer, the format Kwik uses. Pure string work, no eval.
+  unpack(html) {
+    const m = html.match(/\}\('([\s\S]*?)',\s*(\d+),\s*(\d+),\s*'([\s\S]*?)'\.split\('\|'\)/);
+    if (!m) { return ''; }
+    let p = m[1].replace(/\\'/g, "'"), a = parseInt(m[2], 10), c = parseInt(m[3], 10);
+    const k = m[4].split('|');
+    const enc = n => (n < a ? '' : enc(Math.floor(n / a))) + ((n = n % a) > 35 ? String.fromCharCode(n + 29) : n.toString(36));
+    const d = {};
+    while (c--) { d[enc(c)] = k[c] || enc(c); }
+    return p.replace(/\b\w+\b/g, w => (d[w] !== undefined ? d[w] : w));
+  },
+
   /* Turn an embed page into a direct stream when we know the host (so it plays in the native player) */
   async resolve(src, name) {
     const type = u => /\.m3u8(\?|$)/i.test(u) ? 'hls' : 'mp4';
@@ -114,6 +126,15 @@ BZ.register({
         const u = md.hlsManifestUrl || md.hlsMasterPlaylistUrl || md.ondemandHls || ((md.videos || []).slice().reverse().find(v => v.url) || {}).url || '';
         if (u) { return { name: name, url: u, type: type(u), headers: { referer: 'https://ok.ru/' } }; }
         BZ.log('ok.ru: no link in metadata ' + Object.keys(md).join(','));
+      } else if (/^https?:/i.test(src) && !/mega\.nz|ok\.ru|rumble\.com|dailymotion/i.test(src)) {
+        /* any other player: read its page, unpack the packed script, look for a video link */
+        const host = new URL(src).origin + '/';
+        const r = await BZ.get(src, { referer: this.base + '/' });
+        const body = this.fix(r.body);
+        const pool = (body + ' ' + this.unpack(body)).replace(/\\\//g, '/').replace(/\\u0026/g, '&');
+        const u = (pool.match(/https?:\/\/[^'"\s<>\\]+\.m3u8[^'"\s<>\\]*/) || [])[0] || (pool.match(/https?:\/\/[^'"\s<>\\]+\.mp4[^'"\s<>\\]*/) || [])[0] || '';
+        if (u) { return { name, url: u, type: type(u), headers: { referer: host } }; }
+        BZ.log('player ' + host + ': no video link (' + body.length + ' chars)');
       }
     } catch (e) { BZ.log('resolve ' + name + ': ' + e.message); }
     return null;
