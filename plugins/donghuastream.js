@@ -5,6 +5,8 @@
    Edit this file, then run `python3 build.py` to copy it into every plugin. */
 const EX = {
   UA: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:144.0) Gecko/20100101 Firefox/144.0',
+  /* the user-agent the phone uses for its own requests; Dailymotion signs the playlist link, so the player must send the same one */
+  PUA: 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36',
   fix(b) { b = String(b || ''); return /<[a-z][a-z0-9]*\+[a-z-]+=/i.test(b) ? b.replace(/\+/g, ' ') : b; },
   host(u) { try { return new URL(u).origin; } catch (e) { return ''; } },
   type(u) { return /\.(m3u8|txt)(\?|$)/i.test(u) || /master\.txt/i.test(u) ? 'hls' : 'mp4'; },
@@ -57,16 +59,16 @@ const EX = {
 
   async dailymotion(id, name) {
     const embed = 'https://www.dailymotion.com/embed/video/' + id;
-    const r = await BZ.get('https://www.dailymotion.com/player/metadata/video/' + id, { referer: embed });
+    const r = await BZ.get('https://www.dailymotion.com/player/metadata/video/' + id, { referer: embed, ua: this.PUA });
     const j = this.json(r.body); if (!j) { BZ.log('dailymotion: not json (' + r.status + ')'); return []; }
     const subs = [];
     try { Object.keys((j.subtitles && j.subtitles.data) || {}).forEach(k => { const s = j.subtitles.data[k]; (s.urls || []).forEach(u => subs.push({ lang: s.label || k, url: u })); }); } catch (e) {}
     const out = [];
-    ((j.qualities && j.qualities.auto) || []).forEach(q => { if (q.url && /\.m3u8/.test(q.url)) { out.push({ name, url: q.url, type: 'hls', subs }); } });
+    ((j.qualities && j.qualities.auto) || []).forEach(q => { if (q.url && /\.m3u8/.test(q.url)) { out.push({ name, url: q.url, type: 'hls', subs, headers: { ua: this.PUA } }); } });
     /* check the manifest from the phone too, so the Test log shows why a native player would fail */
     if (out.length) {
       try {
-        const mr = await BZ.get(out[0].url, { referer: embed });
+        const mr = await BZ.get(out[0].url, { referer: embed, ua: this.PUA });
         const mb = String(mr.body || '');
         BZ.log('dailymotion manifest: status ' + mr.status + ', ' + (mb.indexOf('#EXTM3U') === 0 ? 'ok, ' + (mb.match(/#EXT-X-STREAM-INF/g) || []).length + ' qualities' : 'not a playlist: ' + mb.slice(0, 60).replace(/\s+/g, ' ')));
       } catch (e) { BZ.log('dailymotion manifest: ' + e.message); }
