@@ -274,13 +274,14 @@ BZ.register({
       });
     }
     BZ.log('mirrors found: ' + items.length + ' (' + items.map(x => x.src.replace(/^https?:\/\//, '').slice(0, 25)).join(', ') + ')');
-    const out = [];
+    const out = [], embeds = [];
     for (const it of items) {
       const src = BZ.abs(it.src, this.base), name = it.name;
       const rs = await EX.resolve(src, name, this.base);
       rs.forEach(x => out.push(x));
-      out.push({ name: rs.length ? name + ' (web)' : name, url: src, type: 'embed' });
+      if (!rs.length) { embeds.push({ name, url: src, type: 'embed' }); }
     }
-    return out;
+    /* native servers first; web-only servers (Mega, Waaw...) only when nothing plays natively */
+    return out.length ? out : embeds;
   }
 });
