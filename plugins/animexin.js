@@ -70,6 +70,20 @@ const EX = {
         BZ.log('latest episode found by next-link: ' + n);
       }
     } catch (e) { BZ.log('next-link: ' + e.message); }
+    /* last resort: the newest episode page often exists before any list shows it; guess its address from the last one */
+    try {
+      let last = eps[eps.length - 1];
+      for (let k = 0; k < 3; k++) {
+        const nn = Math.floor(parseFloat(last.number)) + 1;
+        const re = /-(episode|ep)-(\d+)/i; if (!re.test(last.id)) { break; }
+        const id = last.id.replace(re, (m0, w) => '-' + w + '-' + nn);
+        if (eps.some(e => e.id === id)) { break; }
+        let d; try { d = await P.get(id); } catch (e) { BZ.log('probe episode ' + nn + ': not there'); break; }
+        const h = ((d.querySelector('h1.entry-title') || {}).textContent || '');
+        if (!new RegExp('(?:episode|ep)\\.?\\s*0*' + nn + '\\b', 'i').test(h) || !d.querySelector('select.mirror, option[data-index], iframe')) { BZ.log('probe episode ' + nn + ': page is not an episode'); break; }
+        last = { id, number: String(nn), title: '' }; eps.push(last); BZ.log('latest episode found by probing: ' + nn);
+      }
+    } catch (e) { BZ.log('probe: ' + e.message); }
     return eps;
   },
 
@@ -472,7 +486,7 @@ BZ.register({
       const rs = await EX.resolve(src, name, this.base);
       rs.forEach(x => out.push(x));
       BZ.log('server ' + name + ': ' + (rs.length ? rs.length + ' link(s), ' + rs.map(x => x.quality || x.type).join('/') : 'no direct link') + ' <- ' + src.replace(/^https?:\/\//, '').slice(0, 40));
-      if (!rs.length) { embeds.push({ name: name + ' (web)', url: src, type: 'embed' }); }
+      if (!rs.length || /dailymotion\.com/i.test(src)) { embeds.push({ name: name + ' (web)', url: src, type: 'embed' }); }
     }
     /* direct links first, then the web version of any server we could not open directly */
     return out.concat(embeds);
