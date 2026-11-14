@@ -28,19 +28,39 @@ const EX = {
     d.querySelectorAll('.eplister li').forEach(li => add(li.querySelector('a'), (li.querySelector('a') || {}).textContent, li));
     if (out.length) { d.querySelectorAll('.lastend a[href], .inepcx a[href]').forEach(a => add(a, a.textContent)); }
     out.forEach((e, i) => { if (e.number === '') { e.number = String(out.length - i); } });
-    /* the page drops episodes that share a number (e.g. two pages both titled "Episode 17"): keep each one with its own number.
-       the list is newest-first on the site, so walk it oldest-first */
-    const asc = out.slice().reverse().sort((a, b) => (parseFloat(a.number) || 0) - (parseFloat(b.number) || 0)); let last = 0; const dups = [];
-    asc.forEach((e, i) => {
-      const n = parseFloat(e.number), nx = i + 1 < asc.length ? parseFloat(asc[i + 1].number) : Infinity;
-      if (!isNaN(n) && n <= last) { dups.push(e.number + ' ' + e.id.slice(-30)); e.number = String((nx > last + 1) ? last + 1 : last + 0.5); }
-      last = parseFloat(e.number) || last;
+    /* same number twice: keep the first (the site lists newest first); a "part 2" style page stays as N.5, other copies are dead/duplicate pages */
+    const asc = out.slice().sort((x, y) => (parseFloat(x.number) || 0) - (parseFloat(y.number) || 0)), keep = [], drop = [], have = {};
+    asc.forEach(e => {
+      if (!have[e.number]) { have[e.number] = 1; keep.push(e); return; }
+      if (/part|[-/]pt-?\d|-v2|-final/i.test(e.id)) { let n = parseFloat(e.number) + 0.5; while (have[String(n)]) { n += 0.1; } e.number = String(Math.round(n * 10) / 10); have[e.number] = 1; keep.push(e); } else { drop.push(e.number + ' ' + e.id.slice(-30)); }
     });
-    if (dups.length) { try { BZ.log('episodes renumbered: ' + dups.join(' | ')); } catch (e) {} }
-    const srt = asc;
+    keep.sort((x, y) => parseFloat(x.number) - parseFloat(y.number));
+    if (drop.length) { try { BZ.log('episodes duplicate dropped: ' + drop.join(' | ')); } catch (e) {} }
+    const srt = keep;
     try { BZ.log('episodes: ' + srt.length + ' (' + (srt[0] || {}).number + ' .. ' + (srt[srt.length - 1] || {}).number + '), lastend=' + (((d.querySelector('.lastend a') || {}).getAttribute || (() => ''))).call(d.querySelector('.lastend a') || {}, 'href') + ', page=' + (d.documentElement ? d.documentElement.outerHTML.length : 0) + 'b'); } catch (e) {}
     return srt;
   },
+  /* the series page can lag behind: walk the "next episode" links from the newest listed episode */
+  async more(eps, P) {
+    try {
+      if (!eps.length) { return eps; }
+      const seen = {}; eps.forEach(e => { seen[e.id] = 1; });
+      let cur = eps[eps.length - 1], n = parseFloat(cur.number) || eps.length;
+      for (let k = 0; k < 6; k++) {
+        const d = await P.get(cur.id);
+        const a = d.querySelector('a[rel="next"][href], .naveps .rght a[href], .nvs.rght a[href]');
+        const href = a && a.getAttribute('href');
+        if (!href || href === '#' || /\/anime\/?$/.test(href)) { break; }
+        const id = new URL(href, P.base).pathname; if (seen[id] || id === '/') { break; }
+        const m = id.match(/-(?:episode|ep)-(\d+(?:\.\d+)?)/i);
+        n = m && parseFloat(m[1]) > n ? parseFloat(m[1]) : n + 1;
+        seen[id] = 1; cur = { id, number: String(n), title: '' }; eps.push(cur);
+        BZ.log('latest episode found by next-link: ' + n);
+      }
+    } catch (e) { BZ.log('next-link: ' + e.message); }
+    return eps;
+  },
+
   /* JSON, also when a browser wrapped it in <html><pre>..</pre> (hidden-browser fallback) */
   json(t) {
     t = String(t || '').trim();
@@ -383,6 +403,7 @@ BZ.register({
     const txt = s => { const e = d.querySelector(s); return e ? e.textContent.trim() : ''; };
     const img = d.querySelector('.thumb') || d.querySelector('.thumb img');
     if (!eps.length) { eps.push({ id, number: '1', title: txt('h1.entry-title') }); }
+    else { eps = await EX.more(eps, this); }
     return {
       title: txt('h1.entry-title'),
       poster: this.pic(img),
