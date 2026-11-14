@@ -197,8 +197,9 @@ const EX = {
             const vr = await BZ.get(vs[hs[0]], { ua: this.PUA });
             const open = hits() === h1 && String(unwrap(vr.body)).indexOf('#EXTM3U') >= 0;
             BZ.log('dailymotion ' + hs[0] + 'p playlist: ' + (open ? 'open to plain requests' : 'also blocked (status ' + vr.status + ')') + ' <- ' + vs[hs[0]].slice(0, 70));
+            out.forEach(o => { o.h = hs[0]; });
             if (open) {
-              const vq = hs.slice(0, 5).map(h => ({ name: name + ' ' + h + 'p', url: vs[h], type: 'hls', subs, headers: { ua: this.PUA } }));
+              const vq = hs.slice(0, 5).map(h => ({ name: name + ' ' + h + 'p', url: vs[h], type: 'hls', subs, headers: { ua: this.PUA }, h }));
               return vq.concat(out);
             }
           }
@@ -222,7 +223,9 @@ const EX = {
         let md = opt.flashvars && opt.flashvars.metadata; if (typeof md === 'string') { md = JSON.parse(md); }
         md = md || {};
         const h = md.hlsManifestUrl || md.hlsMasterPlaylistUrl || md.ondemandHls;
-        if (h) { out.push({ name, url: h, type: 'hls', headers: hd }); }
+        const hq = { MOBILE: 144, LOWEST: 240, LOW: 360, SD: 480, HD: 720, FULL: 1080, QUAD: 1440, ULTRA: 2160 };
+        let mh = 0; (md.videos || []).forEach(v => { mh = Math.max(mh, hq[String(v.name).toUpperCase()] || 0); });
+        if (h) { out.push({ name, url: h, type: 'hls', headers: hd, h: mh }); }
       } catch (e) { BZ.log('ok.ru options: ' + e.message); }
     }
     if (!out.length) {
@@ -230,7 +233,7 @@ const EX = {
       const vm = body.match(/"videos":(\[[^\]]*\])/);
       const vs = vm ? this.json(vm[1]) : null;
       const q = { MOBILE: '144p', LOWEST: '240p', LOW: '360p', SD: '480p', HD: '720p', FULL: '1080p', QUAD: '1440p', ULTRA: '4k' };
-      (vs || []).slice().reverse().forEach(v => { if (v && v.url) { out.push({ name: name + ' ' + (q[String(v.name).toUpperCase()] || v.name), url: v.url.indexOf('//') === 0 ? 'https:' + v.url : v.url, type: 'mp4', quality: q[String(v.name).toUpperCase()] || '', headers: hd }); } });
+      (vs || []).slice().reverse().forEach(v => { if (v && v.url) { out.push({ name: name + ' ' + (q[String(v.name).toUpperCase()] || v.name), url: v.url.indexOf('//') === 0 ? 'https:' + v.url : v.url, type: 'mp4', h: parseInt(q[String(v.name).toUpperCase()]) || 0, quality: q[String(v.name).toUpperCase()] || '', headers: hd }); } });
     }
     if (!out.length) { BZ.log('ok.ru: nothing found (' + body.length + ' chars)'); }
     return out;
@@ -273,7 +276,7 @@ const EX = {
     let hls = (ua.hls && ua.hls.auto && ua.hls.auto.url) || (j.u && j.u.hls && j.u.hls.url) || '';
     if (/\/hls-vod\//.test(hls) && /playlist\.m3u8/.test(hls) && hls.indexOf('?') < 0) { hls += '?u=0&b=0'; }
     if (mp4.length) { out.push(mp4[0]); }
-    if (hls) { out.push({ name: name + ' Auto', url: hls, type: 'hls', headers: hd }); }
+    if (hls) { out.push({ name: name + ' Auto', url: hls, type: 'hls', headers: hd, h: mp4.length ? mp4[0].h : (parseInt(((ua.hls.auto || {}).meta || {}).h) || 0) }); }
     mp4.slice(1).forEach(x => out.push(x));
     if (!out.length) { BZ.log('rumble: no link (' + Object.keys(j).join(',') + ')'); }
     return out;
@@ -489,9 +492,10 @@ BZ.register({
       if (!rs.length || /dailymotion\.com/i.test(src)) { embeds.push({ name: name + ' (web)', url: src, type: 'embed' }); }
     }
     /* direct links first, then the web version of any server we could not open directly */
-    /* best picture first: Rumble (up to 4K/2K/1080p), then ok.ru, then Dailymotion (often only 720p); the web versions stay last */
+    /* highest picture quality first (Rumble up to 4K/2K, ok.ru, Dailymotion); ties keep Rumble > ok.ru > Dailymotion; web versions always last */
     const rank = x => /rumble\.com/i.test(x.url) ? 0 : /okcdn|ok\.ru/i.test(x.url) ? 1 : /dailymotion|dmcdn/i.test(x.url) ? 2 : 3;
-    out.sort((x, y) => rank(x) - rank(y));
+    out.forEach((x, i) => { x.i0 = i; });
+    out.sort((x, y) => (y.h || 0) - (x.h || 0) || rank(x) - rank(y) || x.i0 - y.i0);
     return out.concat(embeds);
   }
 });
