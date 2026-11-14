@@ -28,7 +28,16 @@ const EX = {
     d.querySelectorAll('.eplister li').forEach(li => add(li.querySelector('a'), (li.querySelector('a') || {}).textContent, li));
     if (out.length) { d.querySelectorAll('.lastend a[href], .inepcx a[href]').forEach(a => add(a, a.textContent)); }
     out.forEach((e, i) => { if (e.number === '') { e.number = String(out.length - i); } });
-    const srt = out.sort((a, b) => parseFloat(a.number) - parseFloat(b.number));
+    /* the page drops episodes that share a number (e.g. two pages both titled "Episode 17"): keep each one with its own number.
+       the list is newest-first on the site, so walk it oldest-first */
+    const asc = out.slice().reverse().sort((a, b) => (parseFloat(a.number) || 0) - (parseFloat(b.number) || 0)); let last = 0; const dups = [];
+    asc.forEach((e, i) => {
+      const n = parseFloat(e.number), nx = i + 1 < asc.length ? parseFloat(asc[i + 1].number) : Infinity;
+      if (!isNaN(n) && n <= last) { dups.push(e.number + ' ' + e.id.slice(-30)); e.number = String((nx > last + 1) ? last + 1 : last + 0.5); }
+      last = parseFloat(e.number) || last;
+    });
+    if (dups.length) { try { BZ.log('episodes renumbered: ' + dups.join(' | ')); } catch (e) {} }
+    const srt = asc;
     try { BZ.log('episodes: ' + srt.length + ' (' + (srt[0] || {}).number + ' .. ' + (srt[srt.length - 1] || {}).number + '), lastend=' + (((d.querySelector('.lastend a') || {}).getAttribute || (() => ''))).call(d.querySelector('.lastend a') || {}, 'href') + ', page=' + (d.documentElement ? d.documentElement.outerHTML.length : 0) + 'b'); } catch (e) {}
     return srt;
   },
@@ -91,9 +100,30 @@ const EX = {
     return [];
   },
 
+  API: 'https://ani-api-x9f0.onrender.com',
+  /* fetch through our own server (clean datacenter request, no browser quirks); never throws */
+  async srv(url, o) { try { return await (BZ.server ? BZ.server(url, o || {}) : BZ.get(url, o || {})); } catch (e) { return { status: 0, body: '' }; } },
+
   async dailymotion(id, name, geo) {
     const embed = 'https://www.dailymotion.com/embed/video/' + id;
-    const r = await BZ.get('https://www.dailymotion.com/player/metadata/video/' + id, { referer: embed, ua: this.PUA });
+    const mu = 'https://www.dailymotion.com/player/metadata/video/' + id;
+    /* 1) all through our server: metadata + playlist come from one IP, and the player gets a rewritten playlist */
+    try {
+      const sr = await this.srv(mu, { referer: embed });
+      const sj = this.json(sr.body), su = sj && sj.qualities && sj.qualities.auto && (sj.qualities.auto.filter(q => q.url && /\.m3u8/.test(q.url))[0] || {}).url;
+      if (su) {
+        const mr = await this.srv(su, { referer: embed });
+        const ok = String(mr.body || '').indexOf('#EXTM3U') === 0;
+        BZ.log('dailymotion via server: manifest ' + mr.status + (ok ? ' ok' : ' not a playlist: ' + String(mr.body || '').slice(0, 50).replace(/\s+/g, ' ')));
+        if (ok) {
+          const subs0 = [];
+          try { Object.keys((sj.subtitles && sj.subtitles.data) || {}).forEach(k => { const s2 = sj.subtitles.data[k]; (s2.urls || []).forEach(u => subs0.push({ lang: s2.label || k, url: u })); }); } catch (e) {}
+          return [{ name, url: this.API + '/proxy?url=' + encodeURIComponent(su) + '&referer=' + encodeURIComponent(embed), type: 'hls', subs: subs0, headers: { ua: this.PUA } }];
+        }
+      } else { BZ.log('dailymotion via server: no m3u8 (' + sr.status + ')'); }
+    } catch (e) { BZ.log('dailymotion via server: ' + e.message); }
+    /* 2) fallback: from the phone */
+    const r = await BZ.get(mu, { referer: embed, ua: this.PUA });
     const j = this.json(r.body); if (!j) { BZ.log('dailymotion: not json (' + r.status + ')'); return []; }
     const subs = [];
     try { Object.keys((j.subtitles && j.subtitles.data) || {}).forEach(k => { const s = j.subtitles.data[k]; (s.urls || []).forEach(u => subs.push({ lang: s.label || k, url: u })); }); } catch (e) {}
@@ -142,6 +172,12 @@ const EX = {
     const r = await BZ.get('https://rumble.com/embedJS/u3/?request=video&ver=2&v=' + id, { referer: 'https://rumble.com/' });
     let j = this.json(r.body);
     const hd = { referer: 'https://rumble.com/' }, out = [];
+    if (!j || !j.ua) {
+      const sr = await this.srv('https://rumble.com/embedJS/u3/?request=video&ver=2&v=' + id, { referer: 'https://rumble.com/' });
+      const sj = this.json(sr.body);
+      BZ.log('rumble via server: ' + sr.status + (sj && sj.ua ? ' ok' : ' ' + String(sr.body || '').slice(0, 50).replace(/\s+/g, ' ')));
+      if (sj && sj.ua) { j = sj; }
+    }
     if (!j || !j.ua) {
       BZ.log('rumble: embedJS gave ' + r.status + ' ' + String(r.body || '').slice(0, 70).replace(/\s+/g, ' ') + ' - trying the embed page');
       const pr = await BZ.get('https://rumble.com/embed/' + id + '/', { referer: 'https://rumble.com/' });
