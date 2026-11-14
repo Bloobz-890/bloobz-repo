@@ -489,6 +489,9 @@ BZ.register({
       if (!rs.length || /dailymotion\.com/i.test(src)) { embeds.push({ name: name + ' (web)', url: src, type: 'embed' }); }
     }
     /* direct links first, then the web version of any server we could not open directly */
+    /* best picture first: Rumble (up to 4K/2K/1080p), then ok.ru, then Dailymotion (often only 720p); the web versions stay last */
+    const rank = x => /rumble\.com/i.test(x.url) ? 0 : /okcdn|ok\.ru/i.test(x.url) ? 1 : /dailymotion|dmcdn/i.test(x.url) ? 2 : 3;
+    out.sort((x, y) => rank(x) - rank(y));
     return out.concat(embeds);
   }
 });
