@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 5,
+  version: 6,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -44,20 +44,33 @@ BZ.register({
     return [method.toUpperCase(), accept || '', ctype || '', bytes ? String(bytes.length) : '', String(ts), md5, q ? path + '?' + q : path].join('\n');
   },
   /* the app base64-decodes this constant twice: the first result is text that is itself base64 */
-  key() { return this._k || (this._k = CRY.b64d(CRY.fromUtf8(CRY.b64d(this.SECRET)))); },
+  SECRET_ALT: 'WHFuMm5uTzQxL0w5Mm8xaXVYaFNMSFRiWHZZNFo1Wlo2Mm04bVNMQQ==',
+  /* the signing recipe is read from a decompiled app, so several close variants are tried at login and the one the server accepts is remembered */
+  VARS: (() => { const v = []; [0, 1, 2, 3].forEach(k => ['application/json', '', 'application/json; charset=utf-8'].forEach(ct => v.push({ k, ct }))); return v; })(),
+  vi: 0,
+  keyOf(k) {
+    this._kc = this._kc || {};
+    if (!this._kc[k]) {
+      const first = CRY.fromUtf8(CRY.b64d(k < 2 ? this.SECRET : this.SECRET_ALT));
+      this._kc[k] = (k % 2 === 0) ? CRY.b64d(first) : CRY.utf8(first);
+    }
+    return this._kc[k];
+  },
+  key() { return this.keyOf((this.VARS[this.vi] || this.VARS[0]).k); },
   sign(method, accept, ctype, url, body, ts) {
     const mac = CRY.hmacMd5(this.key(), CRY.utf8(this.canonical(method, accept, ctype, url, body, ts)));
     return ts + '|2|' + CRY.b64e(mac);
   },
   headers(method, url, ctype, body, withToken) {
-    const ts = Date.now(), accept = 'application/json';
-    ctype = ctype || 'application/json';
+    const ts = Date.now(), accept = 'application/json', V = this.VARS[this.vi] || this.VARS[0];
+    if (String(method).toUpperCase() === 'GET') { ctype = V.ct; } else { ctype = ctype || 'application/json'; }
     const h = {
-      'user-agent': this.UA, accept, 'content-type': ctype, connection: 'keep-alive',
+      'user-agent': this.UA, accept, connection: 'keep-alive',
       'x-client-token': ts + ',' + CRY.hex(CRY.md5(CRY.utf8(String(ts).split('').reverse().join('')))),
       'x-tr-signature': this.sign(method, accept, ctype, url, body, ts),
       'x-client-info': this.info(), 'x-client-status': '0', 'x-client-build': this.BUILDS[this.build] || this.BUILDS[0]
     };
+    if (ctype) { h['content-type'] = ctype; }
     if (withToken && this.token) { h.Authorization = 'Bearer ' + this.token; }
     return h;
   },
@@ -71,10 +84,32 @@ BZ.register({
     BZ.log(method + ' ' + host.replace('https://', '') + '/' + path.split('?')[0].split('/').slice(-2).join('/') + ' -> ' + r.status + (r.timeout ? ' (no answer in 12s)' : '') + ' ' + String(r.body || '').slice(0, 160).replace(/\s+/g, ' ') + (r.status && r.status !== 200 && r.headers ? ' H:' + JSON.stringify(r.headers).slice(0, 220) : '') + ' [' + (Date.now() - t0) + 'ms]');
     return r;
   },
+  /* find the signing variant the server accepts: try each on the cheap ranking call (its answer carries the visitor token) */
+  async probe() {
+    const path = '/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1';
+    const start = this.vi;
+    for (let n = 0; n < this.VARS.length; n++) {
+      this.vi = (start + n) % this.VARS.length;
+      const r = await this.raw('GET', path, null, 'application/json', false);
+      let tok = ''; if (r.headers && r.headers['x-user']) { try { tok = JSON.parse(r.headers['x-user']).token || ''; } catch (e) {} }
+      const sigBad = /signature/i.test(String(r.body || ''));
+      if (r.status === 200 || tok) {
+        BZ.log('MovieBox signing variant ' + this.vi + ' accepted (key ' + this.VARS[this.vi].k + ', content-type "' + this.VARS[this.vi].ct + '")');
+        try { localStorage.setItem('mb_var', String(this.vi)); } catch (e) {}
+        if (tok) { this.token = tok; try { localStorage.setItem('mb_tok', JSON.stringify({ v: tok, t: Date.now() })); } catch (e) {} }
+        return true;
+      }
+      if (!sigBad) { BZ.log('MovieBox probe stopped: the answer is not a signature error (' + r.status + ')'); break; }
+    }
+    this.vi = start;
+    return false;
+  },
   login() { return this._lp || (this._lp = this.loginRun().finally(() => { this._lp = null; })); },
   async loginRun() {
     try { const t = JSON.parse(localStorage.getItem('mb_tok') || 'null'); if (t && t.v && Date.now() - t.t < 4 * 3600000) { this.token = t.v; return; } } catch (e) {}
     try { const b = Number(localStorage.getItem('mb_build')); if (b >= 0 && b < this.BUILDS.length) { this.build = b; } } catch (e) {}
+    try { const sv = Number(localStorage.getItem('mb_var')); if (sv >= 0 && sv < this.VARS.length) { this.vi = sv; } } catch (e) {}
+    if (!this._probed) { this._probed = true; await this.probe(); if (this.token) { return; } }
     let last = 0;
     for (let k = 0, n = this.fixedHost() ? 1 : this.HOSTS.length; k < n && !this.token; k++) {
       for (let b = 0; b < this.BUILDS.length && !this.token; b++) {
