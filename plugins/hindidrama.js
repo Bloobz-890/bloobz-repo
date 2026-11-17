@@ -4,7 +4,7 @@
 BZ.register({
   id: 'hindidrama',
   name: 'HindiDrama',
-  version: 1,
+  version: 2,
   base: 'https://hindidrama.net',
   test: 'love',
 
@@ -94,34 +94,56 @@ BZ.register({
     };
   },
 
+  JUNK: /(google|gstatic|googletagmanager|google-analytics|doubleclick|facebook|twitter|instagram|schema\.org|w3\.org|cloudflare\.com\/(?:ajax|cdn-cgi)|cdnjs|jsdelivr|unpkg|fontawesome|jquery|bootstrapcdn|histats|statcounter|yandex|gravatar|wp\.com|youtube\.com\/(?:iframe_api|s\/)|ytimg|tailwindcss|disqus|addthis|sharethis|telegram|whatsapp|pinterest|reddit|tiktok)/i,
+  ASSET: /\.(jpe?g|png|webp|gif|svg|ico|css|js|mjs|woff2?|ttf|otf|json|xml|map|vtt|srt)(\?|#|$)/i,
+
   async streams(epId) {
     const r = await this.page(epId);
-    const html = String(r.body || '').replace(/\\\//g, '/').replace(/&amp;/g, '&').replace(/\\u0026/g, '&');
+    const html = String(r.body || '').replace(/\\\//g, '/').replace(/&amp;/g, '&').replace(/\\u0026/g, '&').replace(/\\u002F/gi, '/');
+    const own = this.base.replace(/^https?:\/\//, '');
     const out = [], seen = {};
     const add = (name, url, type, extra) => {
-      url = String(url || '').trim(); if (!url) { return; }
+      url = String(url || '').trim().replace(/[)\]}>,;]+$/, ''); if (!url) { return; }
       if (url.indexOf('//') === 0) { url = 'https:' + url; }
       if (!/^https?:\/\//i.test(url) || seen[url]) { return; }
       seen[url] = 1; out.push(Object.assign({ name, url, type, quality: '', headers: { referer: this.base + '/', origin: this.base } }, extra || {}));
     };
-    // direct files anywhere in the page (video tags, player scripts)
+    // 1. direct files anywhere in the page
     (html.match(/https?:\/\/[^"'\s<>\\]+\.m3u8[^"'\s<>\\]*/gi) || []).forEach((u, i) => add('HLS ' + (i + 1), u, 'hls'));
     (html.match(/https?:\/\/[^"'\s<>\\]+\.mp4[^"'\s<>\\]*/gi) || []).forEach((u, i) => add('MP4 ' + (i + 1), u, 'mp4'));
-    // player frames and server buttons
+    // 2. frames and buttons that carry an address
     const d = BZ.html(r.body);
-    d.querySelectorAll('iframe').forEach((f, i) => {
-      const u = f.getAttribute('src') || f.getAttribute('data-src') || f.getAttribute('data-lazy-src'); if (u) { add('Player ' + (i + 1), BZ.abs(u, this.base), 'embed'); }
-    });
-    d.querySelectorAll('[data-src],[data-embed],[data-video],[data-url],[data-link]').forEach(e => {
-      ['data-embed', 'data-video', 'data-src', 'data-url', 'data-link'].forEach(k => {
-        const u = e.getAttribute(k); if (!u || !/^(https?:)?\/\//i.test(u) || e.tagName === 'IMG') { return; }
-        if (/\.(jpe?g|png|webp|gif|css|js)(\?|$)/i.test(u)) { return; }
-        add((e.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24) || 'Server ' + (out.length + 1), u, /\.m3u8/i.test(u) ? 'hls' : /\.mp4/i.test(u) ? 'mp4' : 'embed');
+    d.querySelectorAll('iframe').forEach((f, i) => { const u = f.getAttribute('src') || f.getAttribute('data-src') || f.getAttribute('data-lazy-src'); if (u) { add('Player ' + (i + 1), BZ.abs(u, this.base), 'embed'); } });
+    const attrs = {};
+    d.querySelectorAll('*').forEach(e => {
+      if (e.tagName === 'IMG' || e.tagName === 'SCRIPT' || e.tagName === 'LINK' || e.tagName === 'A') { return; }
+      Array.prototype.forEach.call(e.attributes, at => {
+        if (/^data-/.test(at.name)) { attrs[at.name] = (attrs[at.name] || 0) + 1; }
+        const v = at.value || '';
+        if (/^data-|^src$/.test(at.name) && /^(https?:)?\/\//i.test(v) && !this.ASSET.test(v) && !this.JUNK.test(v)) { add((e.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 24) || 'Server ' + (out.length + 1), v, /\.m3u8/i.test(v) ? 'hls' : /\.mp4/i.test(v) ? 'mp4' : 'embed'); }
       });
     });
-    BZ.log('streams found: ' + out.length + ' (' + out.map(s => s.type + ':' + s.url.replace(/^https?:\/\//, '').slice(0, 28)).join(', ') + ')');
-    if (!out.length) { throw new Error('HindiDrama: no player found on this episode page'); }
-    // files first, web players last
+    // 3. base64 blobs that decode to an address or an iframe (some sites hide the player this way)
+    (html.match(/[A-Za-z0-9+\/=]{40,}/g) || []).slice(0, 60).forEach(b => {
+      try { const t = atob(b); const m = t.match(/(?:src=["']|^)(https?:\/\/[^"'\s<>]+)/i); if (m && !this.ASSET.test(m[1]) && !this.JUNK.test(m[1])) { add('Player (coded)', m[1], /\.m3u8/i.test(m[1]) ? 'hls' : /\.mp4/i.test(m[1]) ? 'mp4' : 'embed'); } } catch (e) {}
+    });
+    // 4. any other outside address in the page that is not an image, style, script or advert (web player as a last resort)
+    const hosts = {};
+    (html.match(/https?:\/\/[a-z0-9.-]+\.[a-z]{2,}[^\s"'<>\\)]*/gi) || []).forEach(u => {
+      const h = (u.match(/^https?:\/\/([^\/?#]+)/i) || [])[1] || ''; if (!h || h.indexOf(own) >= 0) { return; }
+      hosts[h] = (hosts[h] || 0) + 1;
+      if (!this.ASSET.test(u) && !this.JUNK.test(u) && /embed|player|play|video|stream|watch|e\/|\/v\//i.test(u)) { add('Web ' + h.slice(0, 20), u, 'embed'); }
+    });
+    BZ.log('streams found: ' + out.length + ' (' + out.map(s => s.type + ':' + s.url.replace(/^https?:\/\//, '').slice(0, 30)).join(', ') + ')');
+    if (!out.length) {
+      BZ.log('outside hosts in page: ' + (Object.keys(hosts).slice(0, 12).join(', ') || 'none'));
+      BZ.log('data- attributes: ' + (Object.keys(attrs).slice(0, 12).join(', ') || 'none'));
+      const sc = []; d.querySelectorAll('script[src]').forEach(x => { const u = x.getAttribute('src') || ''; if (!this.JUNK.test(u)) { sc.push(u.replace(/^https?:\/\/[^\/]+/, '').slice(0, 40)); } });
+      BZ.log('scripts: ' + (sc.slice(0, 8).join(' | ') || 'none'));
+      const k = []; (html.match(/.{0,50}(?:player|sources?|embed_?url|iframe|ajax|\/api\/)[^<]{0,70}/gi) || []).slice(0, 5).forEach(x => k.push(x.replace(/\s+/g, ' ')));
+      BZ.log('page hints: ' + (k.join(' ## ') || 'none'));
+      throw new Error('HindiDrama: no player found on this episode page (see the log below)');
+    }
     const rank = { hls: 0, mp4: 1, embed: 2 };
     return out.sort((a, b) => rank[a.type] - rank[b.type]);
   }

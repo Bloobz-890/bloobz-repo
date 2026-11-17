@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 3,
+  version: 4,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -65,25 +65,34 @@ BZ.register({
     const to = new Promise(res => setTimeout(() => res({ status: 0, body: '', headers: {}, timeout: 1 }), 12000));
     let r;
     try { r = await Promise.race([BZ.nat(url, o), to]); } catch (e) { r = { status: 0, body: String(e && e.message || e), headers: {} }; }
-    BZ.log(method + ' ' + host.replace('https://', '') + '/' + path.split('?')[0].split('/').slice(-2).join('/') + ' -> ' + r.status + (r.timeout ? ' (no answer in 12s)' : '') + ' ' + String(r.body || '').slice(0, 70).replace(/\s+/g, ' ') + ' [' + (Date.now() - t0) + 'ms]');
+    if (!r.status && /HTTP_PROXY_AUTH|\(407\)/.test(String(r.body || ''))) { r.status = 407; }
+    BZ.log(method + ' ' + host.replace('https://', '') + '/' + path.split('?')[0].split('/').slice(-2).join('/') + ' -> ' + r.status + (r.timeout ? ' (no answer in 12s)' : '') + ' ' + String(r.body || '').slice(0, 160).replace(/\s+/g, ' ') + (r.status && r.status !== 200 && r.headers ? ' H:' + JSON.stringify(r.headers).slice(0, 220) : '') + ' [' + (Date.now() - t0) + 'ms]');
     return r;
   },
   login() { return this._lp || (this._lp = this.loginRun().finally(() => { this._lp = null; })); },
   async loginRun() {
     try { const t = JSON.parse(localStorage.getItem('mb_tok') || 'null'); if (t && t.v && Date.now() - t.t < 4 * 3600000) { this.token = t.v; return; } } catch (e) {}
+    try { const b = Number(localStorage.getItem('mb_build')); if (b >= 0 && b < this.BUILDS.length) { this.build = b; } } catch (e) {}
+    let last = 0;
     for (let k = 0, n = this.fixedHost() ? 1 : this.HOSTS.length; k < n && !this.token; k++) {
-      const r = await this.raw('POST', '/wefeed-mobile-bff/user-api/visitor-login', '{}', 'application/json', false);
-      let tok = '';
-      try { tok = JSON.parse(r.body).data.token || ''; } catch (e) {}
-      if (!tok && r.headers && r.headers['x-user']) { try { tok = JSON.parse(r.headers['x-user']).token || ''; } catch (e) {} }
-      if (!tok) {
-        const g = await this.raw('GET', '/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1', null, 'application/json', false);
-        if (g.headers && g.headers['x-user']) { try { tok = JSON.parse(g.headers['x-user']).token || ''; } catch (e) {} }
+      for (let b = 0; b < this.BUILDS.length && !this.token; b++) {
+        const r = await this.raw('POST', '/wefeed-mobile-bff/user-api/visitor-login', '{}', 'application/json', false);
+        let tok = '';
+        try { tok = JSON.parse(r.body).data.token || ''; } catch (e) {}
+        if (!tok && r.headers && r.headers['x-user']) { try { tok = JSON.parse(r.headers['x-user']).token || ''; } catch (e) {} }
+        if (!tok) {
+          const g = await this.raw('GET', '/wefeed-mobile-bff/tab/ranking-list?tabId=0&categoryType=4516404531735022304&page=1&perPage=1', null, 'application/json', false);
+          if (g.headers && g.headers['x-user']) { try { tok = JSON.parse(g.headers['x-user']).token || ''; } catch (e) {} }
+          last = r.status || g.status;
+        }
+        if (tok) { this.token = tok; try { localStorage.setItem('mb_tok', JSON.stringify({ v: tok, t: Date.now() })); localStorage.setItem('mb_build', String(this.build)); } catch (e) {} break; }
+        BZ.log('MovieBox login failed on ' + this.curHost() + ' (' + last + ') with client build ' + (this.build + 1) + '/' + this.BUILDS.length);
+        // the server answers 407/403/400/401 when it does not like the client build: try the next one
+        if ([407, 403, 400, 401].indexOf(last) >= 0) { this.build = (this.build + 1) % this.BUILDS.length; } else { break; }
       }
-      if (tok) { this.token = tok; try { localStorage.setItem('mb_tok', JSON.stringify({ v: tok, t: Date.now() })); } catch (e) {} }
-      else { BZ.log('MovieBox login failed on ' + this.curHost() + ' (' + r.status + ')' + (this.fixedHost() ? ' - pick another API host in the plugin settings' : '')); this.hostIdx = (this.hostIdx + 1) % this.HOSTS.length; }
+      if (!this.token) { this.hostIdx = (this.hostIdx + 1) % this.HOSTS.length; }
     }
-    if (!this.token) { throw new Error('MovieBox did not accept the app login. It needs the BlooBZ native extension (v3.7+).'); }
+    if (!this.token) { throw new Error('MovieBox login was refused (last answer ' + last + '). Try another API host in this plugin\'s Settings.'); }
   },
   /* signed call with login, host and build fallback; returns the "data" part */
   async call(method, path, body, ctype) {
@@ -97,7 +106,7 @@ BZ.register({
       last = r.status + ' ' + String(r.body || '').slice(0, 120);
       if (r.status === 401 || (j && /token|login|auth/i.test(String(j.message || j.msg || '')))) { this.token = ''; try { localStorage.removeItem('mb_tok'); } catch (e) {} await this.login(); }
       else if (r.status === 0 || r.status >= 500) { this.hostIdx = (this.hostIdx + 1) % this.HOSTS.length; }
-      else if (r.status === 403 || r.status === 400) { this.build = (this.build + 1) % this.BUILDS.length; }
+      else if (r.status === 403 || r.status === 400 || r.status === 407) { this.build = (this.build + 1) % this.BUILDS.length; }
     }
     throw new Error('MovieBox request failed: ' + last);
   },

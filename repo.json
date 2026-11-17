@@ -44,7 +44,7 @@
       "name": "MovieBox",
       "description": "Movies and series, Hindi/English dubs. Needs BlooBZ app v37+",
       "lang": "en",
-      "version": 3,
+      "version": 4,
       "status": "beta",
       "url": "plugins/moviebox.js"
     },
@@ -62,7 +62,7 @@
       "name": "HindiDrama",
       "description": "K-drama, C-drama, J-drama in Hindi dub (hindidrama.net)",
       "lang": "hi",
-      "version": 1,
+      "version": 2,
       "status": "beta",
       "url": "plugins/hindidrama.js"
     }
