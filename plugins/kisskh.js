@@ -64,7 +64,7 @@ const CRY = (() => {
 BZ.register({
   id: 'kisskh',
   name: 'KissKH',
-  version: 1,
+  version: 2,
   base: 'https://kisskh.is',
   test: 'love',
   VIDEO_GUID: '62f176f3bb1b5b8e70e39932ad34a0c7',
@@ -82,10 +82,23 @@ BZ.register({
     ['Upcoming', '&type=0&sub=0&country=0&status=3&order=2']
   ],
 
+  BASES: ['https://kisskh.is', 'https://kisskh.ovh', 'https://kisskh.co'],
   async j(path, o) {
-    const r = await BZ.get(this.base + path, Object.assign({ referer: this.base + '/', headers: { accept: 'application/json, text/plain, */*' } }, o || {}));
-    if (r.status < 200 || r.status >= 300) { throw new Error('KissKH ' + r.status); }
-    try { return JSON.parse(r.body); } catch (e) { throw new Error('KissKH sent an unreadable answer'); }
+    o = o || {};
+    let last = 'no answer';
+    const order = [this.base].concat(this.BASES.filter(b => b !== this.base));
+    for (let i = 0; i < order.length; i++) {
+      const b = order[i], t0 = Date.now();
+      const to = new Promise(res => setTimeout(() => res({ status: 0, body: '', timeout: 1 }), 20000));
+      let r;
+      try { r = await Promise.race([BZ.get(b + path, Object.assign({ referer: b + '/' }, o)), to]); } catch (e) { r = { status: 0, body: String(e && e.message || e) }; }
+      BZ.log('GET ' + b.replace('https://', '') + path.split('?')[0].slice(0, 40) + ' -> ' + r.status + (r.timeout ? ' (no answer in 20s)' : '') + ' [' + (Date.now() - t0) + 'ms]');
+      if (r.status >= 200 && r.status < 300) {
+        try { const j = JSON.parse(r.body); this.base = b; return j; } catch (e) { last = 'unreadable answer from ' + b; continue; }
+      }
+      last = r.status + ' from ' + b;
+    }
+    throw new Error('KissKH ' + last);
   },
   card(m) { return { id: String(m.id), title: m.title || '', poster: m.thumbnail || '', badge: m.label || (m.episodesCount ? m.episodesCount + ' eps' : '') }; },
 

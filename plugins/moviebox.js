@@ -65,7 +65,7 @@ const CRY = (() => {
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 1,
+  version: 2,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -112,11 +112,16 @@ BZ.register({
     return h;
   },
   async raw(method, path, body, ctype, withToken) {
-    const url = this.HOSTS[this.hostIdx] + path;
-    const r = await BZ.get(url, { method, body: body == null ? '' : body, headers: this.headers(method, url, ctype, body, withToken), ua: this.UA });
+    const url = this.HOSTS[this.hostIdx] + path, t0 = Date.now();
+    const o = { method, body: body == null ? '' : body, headers: this.headers(method, url, ctype, body, withToken), ua: this.UA };
+    const to = new Promise(res => setTimeout(() => res({ status: 0, body: '', headers: {}, timeout: 1 }), 12000));
+    let r;
+    try { r = await Promise.race([BZ.nat(url, o), to]); } catch (e) { r = { status: 0, body: String(e && e.message || e), headers: {} }; }
+    BZ.log(method + ' ' + this.HOSTS[this.hostIdx].replace('https://', '') + '/' + path.split('?')[0].split('/').slice(-2).join('/') + ' -> ' + r.status + (r.timeout ? ' (no answer in 12s)' : '') + ' ' + String(r.body || '').slice(0, 70).replace(/\s+/g, ' ') + ' [' + (Date.now() - t0) + 'ms]');
     return r;
   },
-  async login() {
+  login() { return this._lp || (this._lp = this.loginRun().finally(() => { this._lp = null; })); },
+  async loginRun() {
     try { const t = JSON.parse(localStorage.getItem('mb_tok') || 'null'); if (t && t.v && Date.now() - t.t < 4 * 3600000) { this.token = t.v; return; } } catch (e) {}
     for (let k = 0; k < this.HOSTS.length && !this.token; k++) {
       const r = await this.raw('POST', '/wefeed-mobile-bff/user-api/visitor-login', '{}', 'application/json', false);
