@@ -28,3 +28,13 @@ stream = `{ name, url, type:'hls'|'mp4'|'embed', quality?, headers?:{ referer, o
 - `BZ.json(text)` -> parsed object.
 - `BZ.abs(url, base)` -> absolute URL.
 - `BZ.log(msg)` -> shown in Settings > Repositories > plugin log.
+
+## Plugin settings (app v39+)
+A plugin can offer a Settings button (Settings > Repositories) by defining `settings` (an array or a getter):
+```js
+get settings() { return [
+  { key: 'host', title: 'API host', type: 'choice', options: [{ v: '', label: 'Auto' }, { v: 'https://a.example', label: 'a.example' }] },
+  { key: 'sections', title: 'Home sections', type: 'sections', items: ['Latest', 'Top'] }   // show / hide / reorder
+]; }
+```
+Read the values with `BZ.pref('<plugin id>', key, default)`. A `sections` value is `{ order: [...], hidden: [...] }`.

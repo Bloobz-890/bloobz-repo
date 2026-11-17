@@ -64,7 +64,7 @@ const CRY = (() => {
 BZ.register({
   id: 'kisskh',
   name: 'KissKH',
-  version: 2,
+  version: 3,
   base: 'https://kisskh.is',
   test: 'love',
   VIDEO_GUID: '62f176f3bb1b5b8e70e39932ad34a0c7',
@@ -83,10 +83,17 @@ BZ.register({
   ],
 
   BASES: ['https://kisskh.is', 'https://kisskh.ovh', 'https://kisskh.co'],
+  get settings() {
+    return [
+      { key: 'domain', title: 'Website address', type: 'choice', options: [{ v: '', label: 'Auto (try every address)' }].concat(this.BASES.map(b => ({ v: b, label: b.replace('https://', '') }))) },
+      { key: 'sections', title: 'Home sections (show, hide, reorder)', type: 'sections', items: this.ROWS.map(r => r[0]) }
+    ];
+  },
   async j(path, o) {
     o = o || {};
     let last = 'no answer';
-    const order = [this.base].concat(this.BASES.filter(b => b !== this.base));
+    let fixed = ''; try { fixed = BZ.pref('kisskh', 'domain', ''); } catch (e) {}
+    const order = this.BASES.indexOf(fixed) >= 0 ? [fixed] : [this.base].concat(this.BASES.filter(b => b !== this.base));
     for (let i = 0; i < order.length; i++) {
       const b = order[i], t0 = Date.now();
       const to = new Promise(res => setTimeout(() => res({ status: 0, body: '', timeout: 1 }), 20000));
@@ -104,7 +111,10 @@ BZ.register({
 
   async home() {
     const rows = [];
-    await Promise.all(this.ROWS.map(async ([title, q], i) => {
+    const st = BZ.pref('kisskh', 'sections', null) || {}, hidden = st.hidden || [], ord = st.order || [];
+    const list = this.ROWS.filter(r => hidden.indexOf(r[0]) < 0).sort((a, b) => { const x = ord.indexOf(a[0]), y = ord.indexOf(b[0]); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y); });
+    if (!list.length) { throw new Error('All KissKH home sections are hidden (Settings > KissKH > Settings)'); }
+    await Promise.all(list.map(async ([title, q], i) => {
       try {
         const d = await this.j('/api/DramaList/List?page=1' + q);
         const items = (d.data || []).map(m => this.card(m)).filter(x => x.id && x.title);

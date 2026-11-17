@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 2,
+  version: 3,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -18,6 +18,15 @@ BZ.register({
     ['Turkish Drama', 5, '5177200225164885656'], ['Indian Drama', 5, '4903182713986896328'], ['Reality TV', 5, '1255898847918934600']
   ],
   hostIdx: 0, build: 0, token: '',
+  /* shown in Settings > Repositories > MovieBox > Settings (same idea as the CloudStream plugin's settings) */
+  get settings() {
+    return [
+      { key: 'host', title: 'API host', type: 'choice', options: [{ v: '', label: 'Auto (try every host)' }].concat(this.HOSTS.map(h => ({ v: h, label: h.replace('https://', '') }))) },
+      { key: 'sections', title: 'Home sections (show, hide, reorder)', type: 'sections', items: this.ROWS.map(r => r[0]) }
+    ];
+  },
+  fixedHost() { try { const h = BZ.pref('moviebox', 'host', ''); return this.HOSTS.indexOf(h) >= 0 ? h : ''; } catch (e) { return ''; } },
+  curHost() { return this.fixedHost() || this.HOSTS[this.hostIdx]; },
 
   deviceId() { let d = ''; try { d = localStorage.getItem('mb_dev') || ''; } catch (e) {} if (!d) { for (let i = 0; i < 32; i++) { d += Math.floor(Math.random() * 16).toString(16); } try { localStorage.setItem('mb_dev', d); } catch (e) {} } return d; },
   info() { return '{"package_name":"com.community.oneroom","version_name":"4.0.03.0930.03","version_code":50020132,"os":"android","os_version":"14","device_id":"' + this.deviceId() + '","install_store":"official","gaid":"1b2212c1-dadf-43c3-a0c8-bd6ce48ae22d","brand":"Google","model":"Pixel 8","system_language":"en","net":"NETWORK_WIFI","region":"IN","timezone":"Asia/Calcutta","sp_code":""}'; },
@@ -51,18 +60,18 @@ BZ.register({
     return h;
   },
   async raw(method, path, body, ctype, withToken) {
-    const url = this.HOSTS[this.hostIdx] + path, t0 = Date.now();
+    const host = this.curHost(), url = host + path, t0 = Date.now();
     const o = { method, body: body == null ? '' : body, headers: this.headers(method, url, ctype, body, withToken), ua: this.UA };
     const to = new Promise(res => setTimeout(() => res({ status: 0, body: '', headers: {}, timeout: 1 }), 12000));
     let r;
     try { r = await Promise.race([BZ.nat(url, o), to]); } catch (e) { r = { status: 0, body: String(e && e.message || e), headers: {} }; }
-    BZ.log(method + ' ' + this.HOSTS[this.hostIdx].replace('https://', '') + '/' + path.split('?')[0].split('/').slice(-2).join('/') + ' -> ' + r.status + (r.timeout ? ' (no answer in 12s)' : '') + ' ' + String(r.body || '').slice(0, 70).replace(/\s+/g, ' ') + ' [' + (Date.now() - t0) + 'ms]');
+    BZ.log(method + ' ' + host.replace('https://', '') + '/' + path.split('?')[0].split('/').slice(-2).join('/') + ' -> ' + r.status + (r.timeout ? ' (no answer in 12s)' : '') + ' ' + String(r.body || '').slice(0, 70).replace(/\s+/g, ' ') + ' [' + (Date.now() - t0) + 'ms]');
     return r;
   },
   login() { return this._lp || (this._lp = this.loginRun().finally(() => { this._lp = null; })); },
   async loginRun() {
     try { const t = JSON.parse(localStorage.getItem('mb_tok') || 'null'); if (t && t.v && Date.now() - t.t < 4 * 3600000) { this.token = t.v; return; } } catch (e) {}
-    for (let k = 0; k < this.HOSTS.length && !this.token; k++) {
+    for (let k = 0, n = this.fixedHost() ? 1 : this.HOSTS.length; k < n && !this.token; k++) {
       const r = await this.raw('POST', '/wefeed-mobile-bff/user-api/visitor-login', '{}', 'application/json', false);
       let tok = '';
       try { tok = JSON.parse(r.body).data.token || ''; } catch (e) {}
@@ -72,7 +81,7 @@ BZ.register({
         if (g.headers && g.headers['x-user']) { try { tok = JSON.parse(g.headers['x-user']).token || ''; } catch (e) {} }
       }
       if (tok) { this.token = tok; try { localStorage.setItem('mb_tok', JSON.stringify({ v: tok, t: Date.now() })); } catch (e) {} }
-      else { BZ.log('MovieBox login failed on ' + this.HOSTS[this.hostIdx] + ' (' + r.status + ')'); this.hostIdx = (this.hostIdx + 1) % this.HOSTS.length; }
+      else { BZ.log('MovieBox login failed on ' + this.curHost() + ' (' + r.status + ')' + (this.fixedHost() ? ' - pick another API host in the plugin settings' : '')); this.hostIdx = (this.hostIdx + 1) % this.HOSTS.length; }
     }
     if (!this.token) { throw new Error('MovieBox did not accept the app login. It needs the BlooBZ native extension (v3.7+).'); }
   },
@@ -105,7 +114,10 @@ BZ.register({
   async home() {
     const rows = [];
     await this.login().catch(e => { throw e; });
-    await Promise.all(this.ROWS.map(async ([title, tab, cat], i) => {
+    const st = BZ.pref('moviebox', 'sections', null) || {}, hidden = st.hidden || [], order = st.order || [];
+    const list = this.ROWS.filter(r => hidden.indexOf(r[0]) < 0).sort((a, b) => { const x = order.indexOf(a[0]), y = order.indexOf(b[0]); return (x < 0 ? 99 : x) - (y < 0 ? 99 : y); });
+    if (!list.length) { throw new Error('All MovieBox home sections are hidden (Settings > MovieBox > Settings)'); }
+    await Promise.all(list.map(async ([title, tab, cat], i) => {
       try {
         const d = await this.call('GET', '/wefeed-mobile-bff/tab/ranking-list?tabId=' + tab + '&categoryType=' + cat + '&page=1&perPage=18&restrictKid=false');
         const items = this.subjects(d).map(s => this.card(s)).filter(x => x.id && x.title);
