@@ -56,6 +56,15 @@
       "version": 2,
       "status": "beta",
       "url": "plugins/kisskh.js"
+    },
+    {
+      "id": "hindidrama",
+      "name": "HindiDrama",
+      "description": "K-drama, C-drama, J-drama in Hindi dub (hindidrama.net)",
+      "lang": "hi",
+      "version": 1,
+      "status": "beta",
+      "url": "plugins/hindidrama.js"
     }
   ]
 }
