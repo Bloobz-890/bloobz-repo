@@ -38,6 +38,24 @@
       "version": 1,
       "status": "beta",
       "url": "plugins/anikoto.js"
+    },
+    {
+      "id": "moviebox",
+      "name": "MovieBox",
+      "description": "Movies and series, Hindi/English dubs. Needs BlooBZ app v37+",
+      "lang": "en",
+      "version": 1,
+      "status": "beta",
+      "url": "plugins/moviebox.js"
+    },
+    {
+      "id": "kisskh",
+      "name": "KissKH",
+      "description": "K-drama, C-drama, Asian movies, SUB",
+      "lang": "en",
+      "version": 1,
+      "status": "beta",
+      "url": "plugins/kisskh.js"
     }
   ]
 }
