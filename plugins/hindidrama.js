@@ -4,7 +4,7 @@
 BZ.register({
   id: 'hindidrama',
   name: 'HindiDrama',
-  version: 2,
+  version: 3,
   base: 'https://hindidrama.net',
   test: 'love',
 
@@ -142,6 +142,14 @@ BZ.register({
       BZ.log('scripts: ' + (sc.slice(0, 8).join(' | ') || 'none'));
       const k = []; (html.match(/.{0,50}(?:player|sources?|embed_?url|iframe|ajax|\/api\/)[^<]{0,70}/gi) || []).slice(0, 5).forEach(x => k.push(x.replace(/\s+/g, ' ')));
       BZ.log('page hints: ' + (k.join(' ## ') || 'none'));
+      const sj = []; d.querySelectorAll('script:not([src])').forEach(x => { const t = (x.textContent || '').trim(); if (t) { sj.push((x.getAttribute('type') || 'js') + ' ' + t.length + 'b: ' + t.slice(0, 200).replace(/\s+/g, ' ')); } });
+      BZ.log('inline scripts: ' + sj.length); sj.slice(0, 7).forEach(x => BZ.log('  ' + x));
+      const pc = d.body && d.body.querySelector('[class*=player],[class*=cover],[class*=noplayer],[id*=player],[class*=server]');
+      if (pc) { BZ.log('player box: ' + pc.outerHTML.replace(/\s+/g, ' ').slice(0, 350)); }
+      const oc = []; d.querySelectorAll('[onclick],[href^="javascript"],[href^="#"][class]').forEach(x => { if (oc.length < 6) { oc.push(x.tagName.toLowerCase() + ' ' + (x.getAttribute('onclick') || x.getAttribute('href') || '').slice(0, 70)); } });
+      BZ.log('click handlers: ' + (oc.join(' | ') || 'none'));
+      const bt = []; d.querySelectorAll('button,[role=button],.btn').forEach(x => { if (bt.length < 8) { bt.push((x.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 18) + '<' + x.tagName.toLowerCase() + ' ' + String(x.className || '').slice(0, 20) + '>'); } });
+      BZ.log('buttons: ' + (bt.join(' | ') || 'none'));
       throw new Error('HindiDrama: no player found on this episode page (see the log below)');
     }
     const rank = { hls: 0, mp4: 1, embed: 2 };

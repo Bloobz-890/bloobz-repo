@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 4,
+  version: 5,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -43,8 +43,10 @@ BZ.register({
     const md5 = bytes ? CRY.hex(CRY.md5(bytes.length > 102400 ? bytes.slice(0, 102400) : bytes)) : '';
     return [method.toUpperCase(), accept || '', ctype || '', bytes ? String(bytes.length) : '', String(ts), md5, q ? path + '?' + q : path].join('\n');
   },
+  /* the app base64-decodes this constant twice: the first result is text that is itself base64 */
+  key() { return this._k || (this._k = CRY.b64d(CRY.fromUtf8(CRY.b64d(this.SECRET)))); },
   sign(method, accept, ctype, url, body, ts) {
-    const mac = CRY.hmacMd5(CRY.b64d(this.SECRET), CRY.utf8(this.canonical(method, accept, ctype, url, body, ts)));
+    const mac = CRY.hmacMd5(this.key(), CRY.utf8(this.canonical(method, accept, ctype, url, body, ts)));
     return ts + '|2|' + CRY.b64e(mac);
   },
   headers(method, url, ctype, body, withToken) {
@@ -76,7 +78,7 @@ BZ.register({
     let last = 0;
     for (let k = 0, n = this.fixedHost() ? 1 : this.HOSTS.length; k < n && !this.token; k++) {
       for (let b = 0; b < this.BUILDS.length && !this.token; b++) {
-        const r = await this.raw('POST', '/wefeed-mobile-bff/user-api/visitor-login', '{}', 'application/json', false);
+        const r = await this.raw('POST', '/wefeed-mobile-bff/user-api/visitor-login', '{}', 'application/json; charset=utf-8', false);
         let tok = '';
         try { tok = JSON.parse(r.body).data.token || ''; } catch (e) {}
         if (!tok && r.headers && r.headers['x-user']) { try { tok = JSON.parse(r.headers['x-user']).token || ''; } catch (e) {} }
