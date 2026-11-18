@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 7,
+  version: 8,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -217,6 +217,22 @@ BZ.register({
     return out;
   },
 
+  /* ask the CDN for 2 bytes with each header set until it answers 200/206, and keep the set that works (the player gets error 2004 when the CDN says 403/404) */
+  async fit(st) {
+    const host = this.curHost(), ck = st.cookie || '';
+    const sets = [{ referer: '', origin: '' }, { referer: host + '/', origin: '' }, { referer: host + '/', origin: host }, { referer: 'https://moviebox.ph/', origin: 'https://moviebox.ph' }];
+    let seen = '';
+    for (const v of sets) {
+      const h = { 'user-agent': this.UA, range: 'bytes=0-1', accept: '*/*' };
+      if (ck) { h.cookie = ck; } if (v.referer) { h.referer = v.referer; } if (v.origin) { h.origin = v.origin; }
+      const to = new Promise(res => setTimeout(() => res({ status: 0 }), 8000));
+      let r; try { r = await Promise.race([BZ.nat(st.url, { method: 'GET', headers: h, ua: this.UA }), to]); } catch (e) { r = { status: 0 }; }
+      seen += (seen ? ',' : '') + r.status;
+      if (r.status === 200 || r.status === 206) { st.headers = { ua: this.UA, referer: v.referer, origin: v.origin }; st.ok = true; break; }
+    }
+    BZ.log('MovieBox link check ' + st.name + ' (cookie ' + (ck ? 'yes' : 'no') + '): ' + seen + (st.ok ? ' OK' : ' FAILED') + ' ' + st.url.replace(/^https?:\/\//, '').slice(0, 40));
+  },
+
   async streams(key) {
     const [id, se, ep, dubs] = String(key).split('|');
     const targets = [{ sid: id, lang: 'Original' }].concat(String(dubs || '').split(',').filter(Boolean).map(x => { const i = x.indexOf(':'); return { sid: x.slice(0, i), lang: x.slice(i + 1) }; }));
@@ -244,7 +260,8 @@ BZ.register({
       }));
       if (!out.length && at < this.BUILDS.length - 1) { this.rotate(promo ? 'only the update promo came back (' + promo + ' clips)' : 'no streams'); }
     }
-    out.sort((a, b) => (b.h || 0) - (a.h || 0));
+    await Promise.all(out.map(x => this.fit(x)));
+    out.sort((a, b) => ((b.ok ? 1 : 0) - (a.ok ? 1 : 0)) || ((b.h || 0) - (a.h || 0)));
     if (!out.length) { throw new Error(promo ? 'MovieBox only returned its "update the app" clip for this title on every client build' : 'MovieBox has no playable stream for this title'); }
     return out;
   }
