@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 6,
+  version: 7,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -131,6 +131,12 @@ BZ.register({
     }
     if (!this.token) { throw new Error('MovieBox login was refused (last answer ' + last + '). Try another API host in this plugin\'s Settings.'); }
   },
+  /* the server answers an "update your app" promo clip (and one-episode lists) to a client build it dislikes: switch build */
+  rotate(why) {
+    this.build = (this.build + 1) % this.BUILDS.length;
+    try { localStorage.setItem('mb_build', String(this.build)); } catch (e) {}
+    BZ.log('MovieBox: ' + why + ' -> switching to client build ' + (this.build + 1) + '/' + this.BUILDS.length);
+  },
   /* signed call with login, host and build fallback; returns the "data" part */
   async call(method, path, body, ctype) {
     if (!window.BZNet) { throw new Error('MovieBox needs the BlooBZ native extension'); }
@@ -186,7 +192,12 @@ BZ.register({
     const dubs = (d.dubs || []).filter(x => x && x.subjectId && x.subjectId !== id).map(x => x.subjectId + ':' + (x.lanName || 'Dub').replace(/[|:,]/g, ' ')).join(',');
     const eps = [];
     if (d.subjectType === 2) {
-      let seasons = []; try { seasons = (await this.call('GET', '/wefeed-mobile-bff/subject-api/season-info?subjectId=' + encodeURIComponent(id))).seasons || []; } catch (e) { BZ.log('MovieBox seasons: ' + e.message); }
+      let seasons = [];
+      for (let a = 0; a < this.BUILDS.length; a++) {
+        try { seasons = (await this.call('GET', '/wefeed-mobile-bff/subject-api/season-info?subjectId=' + encodeURIComponent(id))).seasons || []; } catch (e) { BZ.log('MovieBox seasons: ' + e.message); }
+        if (seasons.reduce((n, x) => n + (x.maxEp || 0), 0) > 1 || a === this.BUILDS.length - 1) { break; }
+        this.rotate('season list has no episodes');
+      }
       if (!seasons.length) { seasons = [{ se: 1, maxEp: 1 }]; }
       seasons.forEach(s => { for (let e = 1; e <= (s.maxEp || 1); e++) { eps.push({ id: id + '|' + s.se + '|' + e + '|' + dubs, number: seasons.length > 1 ? s.se + 'x' + e : String(e), title: seasons.length > 1 ? 'Season ' + s.se + ' · Episode ' + e : 'Episode ' + e }); } });
     } else { eps.push({ id: id + '|0|0|' + dubs, number: '1', title: d.title || 'Movie' }); }
@@ -209,22 +220,32 @@ BZ.register({
   async streams(key) {
     const [id, se, ep, dubs] = String(key).split('|');
     const targets = [{ sid: id, lang: 'Original' }].concat(String(dubs || '').split(',').filter(Boolean).map(x => { const i = x.indexOf(':'); return { sid: x.slice(0, i), lang: x.slice(i + 1) }; }));
-    const out = [];
-    await Promise.all(targets.map(async t => {
-      try {
-        const d = await this.call('GET', '/wefeed-mobile-bff/subject-api/play-info?subjectId=' + encodeURIComponent(t.sid) + '&se=' + (se || 0) + '&ep=' + (ep || 0));
-        const list = d.streams || [];
+    let out = [], promo = 0;
+    for (let at = 0; at < this.BUILDS.length && !out.length; at++) {
+      promo = 0;
+      await Promise.all(targets.map(async t => {
+        let list = [];
+        for (const pth of ['play-info/v2', 'play-info']) {
+          try {
+            const d = await this.call('GET', '/wefeed-mobile-bff/subject-api/' + pth + '?subjectId=' + encodeURIComponent(t.sid) + '&se=' + (se || 0) + '&ep=' + (ep || 0));
+            list = d.streams || [];
+            if (list.length) { break; }
+          } catch (e) { BZ.log('MovieBox ' + pth + ' (' + t.lang + '): ' + e.message); }
+        }
         await Promise.all(list.map(async s => {
           if (!s.url || !/^https?:/i.test(s.url) || /\.mpd(\?|$)/i.test(s.url) || /^dash$/i.test(s.format || '')) { return; }
+          const dur = Number(s.duration) || 0;
+          if (dur > 0 && dur < 300) { promo++; return; } /* the 20-second "update the app" clip */
           const hls = /^hls$/i.test(s.format || '') || /\.m3u8/i.test(s.url);
           const q = String(s.resolutions || '').split(/[,\s]+/).map(x => parseInt(x, 10)).filter(Boolean).sort((a, b) => b - a)[0] || 0;
           const subs = s.id ? await this.captions(t.sid, s.id) : [];
           out.push({ name: t.lang + (q ? ' ' + q + 'p' : ''), url: s.url, type: hls ? 'hls' : 'mp4', quality: q ? q + 'p' : '', h: q, cookie: s.signCookie || '', headers: { ua: this.UA }, subs });
         }));
-      } catch (e) { BZ.log('MovieBox streams (' + t.lang + '): ' + e.message); }
-    }));
+      }));
+      if (!out.length && at < this.BUILDS.length - 1) { this.rotate(promo ? 'only the update promo came back (' + promo + ' clips)' : 'no streams'); }
+    }
     out.sort((a, b) => (b.h || 0) - (a.h || 0));
-    if (!out.length) { throw new Error('MovieBox has no playable stream for this title'); }
+    if (!out.length) { throw new Error(promo ? 'MovieBox only returned its "update the app" clip for this title on every client build' : 'MovieBox has no playable stream for this title'); }
     return out;
   }
 });

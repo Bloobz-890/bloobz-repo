@@ -44,7 +44,7 @@
       "name": "MovieBox",
       "description": "Movies and series, Hindi/English dubs. Needs BlooBZ app v37+",
       "lang": "en",
-      "version": 6,
+      "version": 7,
       "status": "beta",
       "url": "plugins/moviebox.js"
     },
