@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 10,
+  version: 11,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -22,8 +22,15 @@ BZ.register({
   get settings() {
     return [
       { key: 'host', title: 'API host', type: 'choice', options: [{ v: '', label: 'Auto (try every host)' }].concat(this.HOSTS.map(h => ({ v: h, label: h.replace('https://', '') }))) },
+      { key: 'lang', title: 'Preferred language (listed first)', type: 'choice', options: [{ v: '', label: 'Best quality first' }, { v: 'hindi', label: 'Hindi' }, { v: 'english', label: 'English' }, { v: 'original', label: 'Original (native audio)' }] },
       { key: 'sections', title: 'Home sections (show, hide, reorder)', type: 'sections', items: this.ROWS.map(r => r[0]) }
     ];
+  },
+  /* readable server names: "ptbr dub" -> "Portuguese (BR) dub", the title's own audio -> "Original (native)" */
+  lname(l) {
+    const M = { ptbr: 'Portuguese (BR)', pt: 'Portuguese', hi: 'Hindi', en: 'English', ta: 'Tamil', te: 'Telugu', ar: 'Arabic', es: 'Spanish', fr: 'French', id: 'Indonesian', ru: 'Russian', tr: 'Turkish', th: 'Thai', vi: 'Vietnamese', bn: 'Bengali', ml: 'Malayalam', kn: 'Kannada', ur: 'Urdu' };
+    const k = String(l || '').trim(), m = M[k.toLowerCase()];
+    return k === 'Original' ? 'Original (native)' : (m || k) + ' dub';
   },
   fixedHost() { try { const h = BZ.pref('moviebox', 'host', ''); return this.HOSTS.indexOf(h) >= 0 ? h : ''; } catch (e) { return ''; } },
   curHost() { return this.fixedHost() || this.HOSTS[this.hostIdx]; },
@@ -269,13 +276,14 @@ BZ.register({
           const hls = /^hls$/i.test(s.format || '') || /\.m3u8/i.test(s.url);
           const q = String(s.resolutions || '').split(/[,\s]+/).map(x => parseInt(x, 10)).filter(Boolean).sort((a, b) => b - a)[0] || 0;
           const subs = s.id ? await this.captions(t.sid, s.id) : [];
-          out.push({ name: t.lang + (q ? ' ' + q + 'p' : ''), url: s.url, type: hls ? 'hls' : 'mp4', quality: q ? q + 'p' : '', h: q, cookie: s.signCookie || '', headers: { ua: this.UA }, subs });
+          out.push({ name: this.lname(t.lang) + (q ? ' ' + q + 'p' : ''), url: s.url, type: hls ? 'hls' : 'mp4', quality: q ? q + 'p' : '', h: q, cookie: s.signCookie || '', headers: { ua: this.UA }, subs });
         }));
       }));
       if (!out.length && at < this.BUILDS.length - 1) { this.rotate(promo ? 'only the update promo came back (' + promo + ' clips)' : 'no streams'); }
     }
     await Promise.all(out.map(x => this.fit(x)));
-    out.sort((a, b) => ((b.ok ? 1 : 0) - (a.ok ? 1 : 0)) || ((b.h || 0) - (a.h || 0)));
+    const pl = String(BZ.pref('moviebox', 'lang', '') || '').toLowerCase(), pm = x => pl && (pl === 'original' ? /^original/i : new RegExp('^' + pl, 'i')).test(x.name) ? 1 : 0;
+    out.sort((a, b) => ((b.ok ? 1 : 0) - (a.ok ? 1 : 0)) || (pm(b) - pm(a)) || ((b.h || 0) - (a.h || 0)));
     if (!out.length) { throw new Error(promo ? 'MovieBox only returned its "update the app" clip for this title on every client build' : 'MovieBox has no playable stream for this title'); }
     return out;
   }
