@@ -65,7 +65,7 @@ const CRY = (() => {
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 12,
+  version: 13,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -277,11 +277,16 @@ BZ.register({
   },
 
   async captions(sid, streamId) {
-    const out = [];
-    try {
-      const d = await this.call('GET', '/wefeed-mobile-bff/subject-api/get-stream-captions?subjectId=' + encodeURIComponent(sid) + '&streamId=' + encodeURIComponent(streamId));
-      (d.extCaptions || d.captions || []).forEach(c => { const u = c.url || c.captionUrl || ''; if (u) { out.push({ lang: c.lanName || c.language || c.lan || 'Subtitle', url: u }); } });
-    } catch (e) {}
+    const out = [], seen = {};
+    const take = d => (d.extCaptions || d.captions || []).forEach(c => {
+      const u = c.url || c.captionUrl || ''; if (!u || seen[u]) { return; } seen[u] = 1;
+      const code = String(c.lan || c.language || '').trim(), nm = code && this.lname(code) !== code + ' dub' && !/^original/i.test(this.lname(code)) ? this.lname(code).replace(/ dub$/, '') : '';
+      out.push({ lang: nm || c.lanName || code || 'Subtitle', url: u });
+    });
+    for (const path of ['get-stream-captions?subjectId=' + encodeURIComponent(sid) + '&streamId=' + encodeURIComponent(streamId), 'get-ext-captions?subjectId=' + encodeURIComponent(sid) + '&resourceId=' + encodeURIComponent(streamId) + '&episode=0']) {
+      try { take(await this.call('GET', '/wefeed-mobile-bff/subject-api/' + path)); } catch (e) {}
+      if (out.length) { break; }
+    }
     return out;
   },
 
@@ -343,6 +348,11 @@ BZ.register({
       }));
       if (!out.length && at < this.BUILDS.length - 1) { this.rotate(promo ? 'only the update promo came back (' + promo + ' clips)' : 'no streams'); }
     }
+    /* the subtitle files belong to the episode, not to one video file: give every server the whole set */
+    const all = {}; out.forEach(x => (x.subs || []).forEach(c => { all[c.url] = c; }));
+    const set = Object.keys(all).map(k => all[k]);
+    out.forEach(x => { x.subs = set; });
+    BZ.log('MovieBox subtitles: ' + (set.length ? set.map(c => c.lang).join(', ') : 'none offered by the server for this title'));
     await Promise.all(out.map(x => this.fit(x)));
     const pl = String(BZ.pref('moviebox', 'lang', '') || '').toLowerCase(), pm = x => pl && (pl === 'original' ? /^original/i : new RegExp('^' + pl, 'i')).test(x.name) ? 1 : 0;
     out.sort((a, b) => ((b.ok ? 1 : 0) - (a.ok ? 1 : 0)) || (pm(b) - pm(a)) || ((b.h || 0) - (a.h || 0)));
