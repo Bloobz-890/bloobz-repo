@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 11,
+  version: 12,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -270,13 +270,14 @@ BZ.register({
           } catch (e) { BZ.log('MovieBox ' + pth + ' (' + t.lang + '): ' + e.message); }
         }
         await Promise.all(list.map(async s => {
-          if (!s.url || !/^https?:/i.test(s.url) || /\.mpd(\?|$)/i.test(s.url) || /^dash$/i.test(s.format || '')) { return; }
+          const dsh = /\.mpd(\?|$)/i.test(s.url || '') || /^dash$/i.test(s.format || '');
+          if (!s.url || !/^https?:/i.test(s.url) || (dsh && !window.BZ_DASH)) { return; } /* DASH needs app v41+ */
           const dur = Number(s.duration) || 0;
           if (dur > 0 && dur < 300) { promo++; return; } /* the 20-second "update the app" clip */
           const hls = /^hls$/i.test(s.format || '') || /\.m3u8/i.test(s.url);
           const q = String(s.resolutions || '').split(/[,\s]+/).map(x => parseInt(x, 10)).filter(Boolean).sort((a, b) => b - a)[0] || 0;
           const subs = s.id ? await this.captions(t.sid, s.id) : [];
-          out.push({ name: this.lname(t.lang) + (q ? ' ' + q + 'p' : ''), url: s.url, type: hls ? 'hls' : 'mp4', quality: q ? q + 'p' : '', h: q, cookie: s.signCookie || '', headers: { ua: this.UA }, subs });
+          out.push({ name: this.lname(t.lang) + (q ? ' ' + q + 'p' : ''), url: s.url, type: dsh ? 'dash' : (hls ? 'hls' : 'mp4'), quality: q ? q + 'p' : '', h: q, cookie: s.signCookie || '', headers: { ua: this.UA }, subs });
         }));
       }));
       if (!out.length && at < this.BUILDS.length - 1) { this.rotate(promo ? 'only the update promo came back (' + promo + ' clips)' : 'no streams'); }
