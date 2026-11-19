@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 8,
+  version: 9,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -229,6 +229,19 @@ BZ.register({
       let r; try { r = await Promise.race([BZ.nat(st.url, { method: 'GET', headers: h, ua: this.UA }), to]); } catch (e) { r = { status: 0 }; }
       seen += (seen ? ',' : '') + r.status;
       if (r.status === 200 || r.status === 206) { st.headers = { ua: this.UA, referer: v.referer, origin: v.origin }; st.ok = true; break; }
+    }
+    if (!this._diag) {
+      this._diag = 1; /* log only: which header sets the CDN refuses (the player and the Test button send different ones) */
+      const CH = 'Mozilla/5.0 (Linux; Android 13; Pixel 7) AppleWebKit/537.36 Chrome/124 Mobile Safari/537.36', G = 'https://www.google.com/';
+      const T = [['cronet+identity', { 'user-agent': this.UA, 'accept-encoding': 'identity' }], ['chrome+google-referer', { 'user-agent': CH, referer: G, origin: 'https://www.google.com' }], ['chrome only', { 'user-agent': CH }], ['no ua', {}]];
+      let o = '';
+      for (const [n, h0] of T) {
+        const h = Object.assign({ range: 'bytes=0-65535', accept: '*/*' }, h0); if (ck) { h.cookie = ck; }
+        const to = new Promise(res => setTimeout(() => res({ status: 0 }), 8000));
+        let r; try { r = await Promise.race([BZ.nat(st.url, { method: 'GET', headers: h, ua: h['user-agent'] || '' }), to]); } catch (e) { r = { status: 0 }; }
+        o += (o ? ', ' : '') + n + '=' + r.status;
+      }
+      BZ.log('MovieBox CDN header test: ' + o + ' | url ' + st.url.slice(-60));
     }
     BZ.log('MovieBox link check ' + st.name + ' (cookie ' + (ck ? 'yes' : 'no') + '): ' + seen + (st.ok ? ' OK' : ' FAILED') + ' ' + st.url.replace(/^https?:\/\//, '').slice(0, 40));
   },
