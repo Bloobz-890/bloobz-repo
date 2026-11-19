@@ -4,7 +4,7 @@
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 9,
+  version: 10,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -220,7 +220,8 @@ BZ.register({
   /* ask the CDN for 2 bytes with each header set until it answers 200/206, and keep the set that works (the player gets error 2004 when the CDN says 403/404) */
   async fit(st) {
     const host = this.curHost(), ck = st.cookie || '';
-    const sets = [{ referer: '', origin: '' }, { referer: host + '/', origin: '' }, { referer: host + '/', origin: host }, { referer: 'https://moviebox.ph/', origin: 'https://moviebox.ph' }];
+    /* non-empty Referer/Origin first: the app sends them as headers even when empty, and an empty header may be what the CDN refuses */
+    const sets = [{ referer: host + '/', origin: host }, { referer: host + '/', origin: '' }, { referer: '', origin: '' }, { referer: 'https://moviebox.ph/', origin: 'https://moviebox.ph' }];
     let seen = '';
     for (const v of sets) {
       const h = { 'user-agent': this.UA, range: 'bytes=0-1', accept: '*/*' };
