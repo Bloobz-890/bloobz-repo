@@ -64,7 +64,7 @@ const CRY = (() => {
 BZ.register({
   id: 'kisskh',
   name: 'KissKH',
-  version: 3,
+  version: 4,
   base: 'https://kisskh.is',
   test: 'love',
   VIDEO_GUID: '62f176f3bb1b5b8e70e39932ad34a0c7',
@@ -182,19 +182,31 @@ BZ.register({
     return out;
   },
 
+  /* plain subtitle text (SRT or VTT) to WebVTT, which the player always understands */
+  toVtt(raw) {
+    const t = String(raw).replace(/^\uFEFF/, '').trim();
+    if (/^WEBVTT/.test(t)) { return t + '\n'; }
+    return 'WEBVTT\n\n' + t.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2') + '\n';
+  },
+
   async subs(epId) {
     const res = [];
     try {
       const list = await this.j('/api/Sub/' + epId + '?kkey=' + this.kkey(epId, this.SUB_GUID));
-      for (const s of (Array.isArray(list) ? list : [])) {
-        if (!s.src) { continue; }
+      const arr = Array.isArray(list) ? list : [];
+      BZ.log('KissKH subtitles offered: ' + (arr.length ? arr.map(x => (x.label || '?') + ' ' + String(x.src || '').slice(-24)).join(' | ') : 'none'));
+      arr.sort((a, b) => (/english/i.test(b.label || '') ? 1 : 0) - (/english/i.test(a.label || '') ? 1 : 0));
+      await Promise.all(arr.slice(0, 8).map(async s => {
+        if (!s.src) { return; }
         const lang = s.label || 'Subtitle';
-        if (/\.txt(\?|$)/i.test(s.src)) {
-          try { const r = await BZ.get(s.src, { referer: this.base + '/' }); if (r.status === 200) { res.push({ lang, text: this.decryptSub(r.body) }); } } catch (e) { BZ.log('KissKH sub ' + lang + ': ' + e.message); }
-        } else { res.push({ lang, url: s.src }); }
-      }
+        try {
+          const r = await Promise.race([BZ.get(s.src, { referer: this.base + '/' }), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))]);
+          if (r.status !== 200 || !r.body) { throw new Error('status ' + r.status); }
+          let text; try { text = this.decryptSub(r.body); } catch (e) { text = this.toVtt(r.body); }
+          res.push({ lang, text });
+        } catch (e) { BZ.log('KissKH sub ' + lang + ' failed (' + e.message + '), passing the address'); res.push({ lang, url: s.src }); }
+      }));
     } catch (e) { BZ.log('KissKH subs: ' + e.message); }
-    /* English first */
     res.sort((a, b) => (/english/i.test(b.lang) ? 1 : 0) - (/english/i.test(a.lang) ? 1 : 0));
     return res;
   },

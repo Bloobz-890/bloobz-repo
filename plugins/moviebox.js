@@ -65,7 +65,7 @@ const CRY = (() => {
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 13,
+  version: 14,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -350,7 +350,17 @@ BZ.register({
     }
     /* the subtitle files belong to the episode, not to one video file: give every server the whole set */
     const all = {}; out.forEach(x => (x.subs || []).forEach(c => { all[c.url] = c; }));
-    const set = Object.keys(all).map(k => all[k]);
+    let set = Object.keys(all).map(k => all[k]);
+    set.sort((a, b) => (/english/i.test(b.lang) ? 1 : 0) - (/english/i.test(a.lang) ? 1 : 0));
+    /* the player guesses the subtitle format from the file name and many files have none: fetch them and hand over clean WebVTT text */
+    set = await Promise.all(set.slice(0, 8).map(async c => {
+      try {
+        const r = await Promise.race([BZ.get(c.url, {}), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))]);
+        if (r.status !== 200 || !r.body || r.body.length < 20) { throw new Error('status ' + r.status); }
+        const t = String(r.body).replace(/^\uFEFF/, '').trim();
+        return { lang: c.lang, text: /^WEBVTT/.test(t) ? t + '\n' : 'WEBVTT\n\n' + t.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2') + '\n' };
+      } catch (e) { BZ.log('MovieBox subtitle ' + c.lang + ' not fetched (' + e.message + '), passing the address'); return c; }
+    }));
     out.forEach(x => { x.subs = set; });
     BZ.log('MovieBox subtitles: ' + (set.length ? set.map(c => c.lang).join(', ') : 'none offered by the server for this title'));
     await Promise.all(out.map(x => this.fit(x)));
