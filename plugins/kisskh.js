@@ -64,7 +64,7 @@ const CRY = (() => {
 BZ.register({
   id: 'kisskh',
   name: 'KissKH',
-  version: 5,
+  version: 6,
   base: 'https://kisskh.is',
   test: 'love',
   VIDEO_GUID: '62f176f3bb1b5b8e70e39932ad34a0c7',
@@ -101,7 +101,7 @@ BZ.register({
       try { r = await Promise.race([BZ.get(b + path, Object.assign({ referer: b + '/' }, o)), to]); } catch (e) { r = { status: 0, body: String(e && e.message || e) }; }
       BZ.log('GET ' + b.replace('https://', '') + path.split('?')[0].slice(0, 40) + ' -> ' + r.status + (r.timeout ? ' (no answer in 20s)' : '') + ' [' + (Date.now() - t0) + 'ms]');
       if (r.status >= 200 && r.status < 300) {
-        try { const j = JSON.parse(r.body); this.base = b; return j; } catch (e) { last = 'unreadable answer from ' + b; continue; }
+        try { const j = JSON.parse(r.body); this.base = b; return j; } catch (e) { last = 'unreadable answer from ' + b; BZ.log('  body starts: ' + JSON.stringify(String(r.body).slice(0, 80))); continue; }
       }
       last = r.status + ' from ' + b;
     }
@@ -197,7 +197,18 @@ BZ.register({
   async subs(epId) {
     const res = [];
     try {
-      const list = await this.j('/api/Sub/' + epId + '?kkey=' + this.kkey(epId, this.SUB_GUID));
+      let list = null;
+      try { list = await this.j('/api/Sub/' + epId + '?kkey=' + this.kkey(epId, this.SUB_GUID)); } catch (e) { BZ.log('KissKH subs own key refused: ' + e.message); }
+      /* the site changes its key rules: ask the helper pages for a key made by the site's own script, like the CloudStream plugin does */
+      if (!Array.isArray(list)) {
+        for (const u of ['https://script.google.com/macros/s/AKfycbyq6hTj0ZhlinYC6xbggtgo166tp6XaDKBCGtnYk8uOfYBUFwwxBui0sGXiu_zIFmA/exec?id=', 'https://script.google.com/macros/s/AKfycbzn8B31PuDxzaMa9_CQ0VGEDasFqfzI5bXvjaIZH4DM8DNq9q6xj1ALvZNz_JT3jF0suA/exec?id=']) {
+          try {
+            const r = await BZ.get(u + epId + '&version=2.8.10', {});
+            const k = JSON.parse(r.body).key; if (!k) { continue; }
+            const l = await this.j('/api/Sub/' + epId + '?kkey=' + k); if (Array.isArray(l)) { list = l; BZ.log('KissKH subs: helper key worked'); break; }
+          } catch (e) { BZ.log('KissKH subs helper: ' + e.message); }
+        }
+      }
       const arr = Array.isArray(list) ? list : [];
       BZ.log('KissKH subtitles offered: ' + (arr.length ? arr.map(x => (x.label || '?') + ' ' + String(x.src || '').slice(-24)).join(' | ') : 'none'));
       arr.sort((a, b) => (/english/i.test(b.label || '') ? 1 : 0) - (/english/i.test(a.label || '') ? 1 : 0));

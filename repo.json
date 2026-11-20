@@ -53,7 +53,7 @@
       "name": "KissKH",
       "description": "K-drama, C-drama, Asian movies, SUB",
       "lang": "en",
-      "version": 5,
+      "version": 6,
       "status": "beta",
       "url": "plugins/kisskh.js"
     },
