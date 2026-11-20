@@ -3,7 +3,7 @@
 BZ.register({
   id: 'kisskh',
   name: 'KissKH',
-  version: 4,
+  version: 5,
   base: 'https://kisskh.is',
   test: 'love',
   VIDEO_GUID: '62f176f3bb1b5b8e70e39932ad34a0c7',
@@ -109,13 +109,18 @@ BZ.register({
   decryptSub(raw) {
     const pairs = [['AmSmZVcH93UQUezi', [1382367819, 1465333859, 1902406224, 1164854838]], ['8056483646328763', [909653298, 909193779, 925905208, 892483379]], ['sWODXX04QRTkHdlZ', [946894696, 1634749029, 1127508082, 1396271183]]]
       .map(([k, iv]) => [CRY.utf8(k), iv.flatMap(v => [v >>> 24 & 255, v >>> 16 & 255, v >>> 8 & 255, v & 255])]);
-    const dec = line => { const data = CRY.b64d(line.trim()); for (const [k, iv] of pairs) { try { return CRY.fromUtf8(CRY.aesCbcDec(data, k, iv, true)); } catch (e) {} } throw new Error('subtitle key'); };
-    const chunks = String(raw).split(/^\s*\d+\s*$/m).map(c => c.trim()).filter(Boolean);
+    const bad = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uFFFD]/;
+    const decWith = (pair, line) => { const t = CRY.fromUtf8(CRY.aesCbcDec(CRY.b64d(line.trim()), pair[0], pair[1], true)); if (bad.test(t)) { throw new Error('garbled'); } return t; };
+    const chunks = String(raw).replace(/\r/g, '').split(/^\s*\d+\s*$/m).map(c => c.trim()).filter(Boolean).map(c => { const l = c.split('\n'); return { when: l.shift() || '', lines: l.filter(x => x.trim()) }; }).filter(c => /-->/.test(c.when) && c.lines.length);
+    /* one key opens the whole file: pick the one that reads cleanly on the first lines, so a wrong key can never leak garbage */
+    const probe = chunks.slice(0, 6).flatMap(c => c.lines).slice(0, 8);
+    let pair = null;
+    for (const p of pairs) { let ok = 0; for (const l of probe) { try { decWith(p, l); ok++; } catch (e) {} } if (probe.length && ok === probe.length) { pair = p; break; } }
+    if (!pair) { throw new Error('no subtitle key fits'); }
     let out = 'WEBVTT\n\n', n = 0;
     for (const c of chunks) {
-      const lines = c.split(/\r?\n/); const when = lines.shift() || ''; if (!/-->/.test(when)) { continue; }
-      let text = ''; try { text = lines.filter(x => x.trim()).map(dec).join('\n'); } catch (e) { continue; }
-      out += (++n) + '\n' + when.replace(/,/g, '.') + '\n' + text + '\n\n';
+      let text = ''; try { text = c.lines.map(l => decWith(pair, l)).join('\n'); } catch (e) { continue; }
+      out += (++n) + '\n' + c.when.replace(/,/g, '.') + '\n' + text + '\n\n';
     }
     if (!n) { throw new Error('no subtitle lines'); }
     return out;
@@ -123,7 +128,7 @@ BZ.register({
 
   /* plain subtitle text (SRT or VTT) to WebVTT, which the player always understands */
   toVtt(raw) {
-    const t = String(raw).replace(/^\uFEFF/, '').trim();
+    const t = String(raw).replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n').trim();
     if (/^WEBVTT/.test(t)) { return t + '\n'; }
     return 'WEBVTT\n\n' + t.replace(/(\d{2}:\d{2}:\d{2}),(\d{3})/g, '$1.$2') + '\n';
   },
