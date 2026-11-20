@@ -3,7 +3,7 @@
 BZ.register({
   id: 'kisskh',
   name: 'KissKH',
-  version: 6,
+  version: 7,
   base: 'https://kisskh.is',
   test: 'love',
   VIDEO_GUID: '62f176f3bb1b5b8e70e39932ad34a0c7',
@@ -157,12 +157,15 @@ BZ.register({
         try {
           const r = await Promise.race([BZ.get(s.src, { referer: this.base + '/' }), new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 10000))]);
           if (r.status !== 200 || !r.body) { throw new Error('status ' + r.status); }
-          let text; try { text = this.decryptSub(r.body); } catch (e) { text = this.toVtt(r.body); }
+          let text, how = 'decrypted'; try { text = this.decryptSub(r.body); } catch (e) { how = 'plain (' + e.message + ')'; text = this.toVtt(r.body); }
+          BZ.log('KissKH sub ' + lang + ': ' + r.body.length + ' bytes, ' + how + ', ' + (text.match(/-->/g) || []).length + ' cues, starts ' + JSON.stringify(String(r.body).slice(0, 40)));
+          if (!/-->/.test(text)) { throw new Error('no cues'); }
           res.push({ lang, text });
         } catch (e) { BZ.log('KissKH sub ' + lang + ' failed (' + e.message + '), passing the address'); res.push({ lang, url: s.src }); }
       }));
     } catch (e) { BZ.log('KissKH subs: ' + e.message); }
     res.sort((a, b) => (/english/i.test(b.lang) ? 1 : 0) - (/english/i.test(a.lang) ? 1 : 0));
+    BZ.log('KissKH subtitles handed to the player: ' + (res.map(x => x.lang + (x.text ? ' (text)' : ' (address)')).join(', ') || 'none'));
     return res;
   },
 
