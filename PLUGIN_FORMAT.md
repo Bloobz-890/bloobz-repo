@@ -38,3 +38,15 @@ get settings() { return [
 ]; }
 ```
 Read the values with `BZ.pref('<plugin id>', key, default)`. A `sections` value is `{ order: [...], hidden: [...] }`.
+
+## What a stream can carry (app 5.1 and newer)
+
+A stream returned by `streams()` is `{ name, url, type, quality, headers, cookie, subs }`.
+
+- `type`: `hls`, `mp4`, `dash` (a .mpd manifest, for example separate audio languages) or `embed` (a web player page).
+- `headers`: `referer`, `origin` and `ua` are sent as they are. Any other key, or any key inside `headers.extra`, is sent with every request the player makes (for example `Authorization`, `X-Token`).
+- `cookie`: a cookie header value, sent with every request.
+- `subs`: a list of `{ lang, url }` or `{ lang, text }`. `text` may be WebVTT, SRT or ASS; the app saves it with the right ending. Give readable language names such as "English".
+- A plugin can check what the installed app supports with `window.BZ_CAPS` (`dash`, `textSubs`, `extraHeaders`, `cookie`, `embed`). An older app has no `BZ_CAPS`, so test for it before using a newer option.
+
+New sources only need a new file in `plugins/` and a line in `repo.json`; the app does not have to be rebuilt.
