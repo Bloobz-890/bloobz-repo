@@ -35,7 +35,7 @@
       "name": "Anikoto",
       "description": "Anikoto.cz, SUB and DUB, M3U8",
       "lang": "en",
-      "version": 1,
+      "version": 2,
       "status": "beta",
       "url": "plugins/anikoto.js"
     },
@@ -44,7 +44,7 @@
       "name": "MovieBox",
       "description": "Movies and series, Hindi/English dubs. Needs BlooBZ app v37+",
       "lang": "en",
-      "version": 14,
+      "version": 15,
       "status": "beta",
       "url": "plugins/moviebox.js"
     },
@@ -53,7 +53,7 @@
       "name": "KissKH",
       "description": "K-drama, C-drama, Asian movies, SUB",
       "lang": "en",
-      "version": 7,
+      "version": 8,
       "status": "beta",
       "url": "plugins/kisskh.js"
     },
@@ -62,7 +62,7 @@
       "name": "HindiDrama",
       "description": "K-drama, C-drama, J-drama in Hindi dub (hindidrama.net)",
       "lang": "hi",
-      "version": 3,
+      "version": 4,
       "status": "beta",
       "url": "plugins/hindidrama.js"
     }

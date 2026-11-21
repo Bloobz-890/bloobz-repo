@@ -65,7 +65,7 @@ const CRY = (() => {
 BZ.register({
   id: 'moviebox',
   name: 'MovieBox',
-  version: 14,
+  version: 15,
   base: 'https://api3.aoneroom.com',
   test: 'avatar',
   HOSTS: ['https://api3.aoneroom.com', 'https://apig.inmoviebox.com', 'https://apii.inmoviebox.com', 'https://api7.aoneroom.com', 'https://api6.aoneroom.com', 'https://api5.aoneroom.com', 'https://api4.aoneroom.com', 'https://api4sg.aoneroom.com'],
@@ -342,6 +342,7 @@ BZ.register({
           if (dur > 0 && dur < 300) { promo++; return; } /* the 20-second "update the app" clip */
           const hls = /^hls$/i.test(s.format || '') || /\.m3u8/i.test(s.url);
           const q = String(s.resolutions || '').split(/[,\s]+/).map(x => parseInt(x, 10)).filter(Boolean).sort((a, b) => b - a)[0] || 0;
+          BZ.log('MovieBox file ' + t.lang + ': format ' + (s.format || '?') + ', sizes ' + (s.resolutions || '?') + ', ' + (dur || '?') + 's');
           const subs = s.id ? await this.captions(t.sid, s.id) : [];
           out.push({ name: this.lname(t.lang) + (q ? ' ' + q + 'p' : ''), url: s.url, type: dsh ? 'dash' : (hls ? 'hls' : 'mp4'), quality: q ? q + 'p' : '', h: q, cookie: s.signCookie || '', headers: { ua: this.UA }, subs });
         }));

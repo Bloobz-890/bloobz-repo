@@ -1,9 +1,10 @@
 /* KissKH plugin for BlooBZ (Korean / Chinese / Asian drama). Logic ported from the CloudStream "Kisskh" provider by phisher98 (GPL-3.0). */
 /*CRY-START*//*CRY-END*/
+/*HLS-START*//*HLS-END*/
 BZ.register({
   id: 'kisskh',
   name: 'KissKH',
-  version: 7,
+  version: 8,
   base: 'https://kisskh.is',
   test: 'love',
   VIDEO_GUID: '62f176f3bb1b5b8e70e39932ad34a0c7',
@@ -181,6 +182,6 @@ BZ.register({
     };
     if (src) { add(src.Video, 'KissKH'); if (src.ThirdParty && src.ThirdParty !== src.Video) { if (/\.(m3u8|mp4)/i.test(src.ThirdParty)) { add(src.ThirdParty, 'KissKH 2'); } } }
     if (!out.length) { throw new Error('KissKH gave no video for this episode'); }
-    return out;
+    return await HLSQ.all(out);
   }
 });
