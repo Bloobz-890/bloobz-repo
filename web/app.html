@@ -4005,12 +4005,11 @@ routes.s_ext = function () {
       CATS.map(function (c) {
         var all = list ? list.plugins.filter(function (pl) { return plCats(pl).indexOf(c[0]) >= 0; }) : [], n = all.filter(function (pl) { return inst[pl.id]; }).length;
         return sRow('c_' + c[0], c[1], c[2], list ? n + ' of ' + all.length : '');
-      }).join('') + sRow('e3', 'Advanced', 'Repository address and plugin tests');
+      }).join('');
     sBack();
     $('#e1').onclick = function () { on = !on; store.set.autoPlug = on; saveStore(true); draw(); };
     var u = $('#e2'); if (u) { u.onclick = function () { u.querySelector('b').textContent = 'Updating...'; Promise.all(upd.map(function (pl) { return plugInstall(pl).then(function () { return 1; }, function () { return 0; }); })).then(function (r) { toast(r.reduce(function (a, b) { return a + b; }, 0) + ' updated'); draw(); }); }; }
     CATS.forEach(function (c) { $('#c_' + c[0]).onclick = function () { go('s_extc|' + c[0]); }; });
-    $('#e3').onclick = function () { go('repos'); };
   }
   draw();
   plugRepoList().then(function (j) { list = j; if (curName === 's_ext') { draw(); } }, function () { toast('Could not load the plugin list'); });
