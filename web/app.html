@@ -3266,6 +3266,8 @@ R.innerHTML = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?fa
     cancelRequest: function (u) { return net(250, function () { sent = sent.filter(function (k) { return k !== u; }); return { ok: true }; }); },
     answerRequest: function (u, accept) { return net(300, function () { incoming = incoming.filter(function (k) { return k !== u; }); if (accept && friends.indexOf(u) < 0) { friends.push(u); } return { ok: true }; }); },
     removeFriend: function (u) { return net(300, function () { friends = friends.filter(function (k) { return k !== u; }); return { ok: true }; }); },
+    unblock: function (u) { return net(250, function () { blocked = blocked.filter(function (k) { return k !== u; }); return { ok: true }; }); },
+    listBlocked: function () { return net(300, function () { return blocked.map(function (k) { return { id: k, name: (P[k] && P[k].name) || k }; }); }); },
     block: function (u) { return net(300, function () { blocked.push(u); friends = friends.filter(function (k) { return k !== u; }); chats = chats.filter(function (c) { return c.w !== u; }); reqs = reqs.filter(function (c) { return c.w !== u; }); return { ok: true }; }); },
     updateProfile: function (patch) { return net(350, function () { Object.assign(P.me, patch); return { ok: true }; }); },
     getProfile: function (u) { return net(450, function () { var p = P[u], rel = u === 'me' ? 'me' : friends.indexOf(u) > -1 ? 'friend' : incoming.indexOf(u) > -1 ? 'incoming' : sent.indexOf(u) > -1 ? 'requested' : 'none', s = p.h % 40; return { p: p, bio: p.bio || bios[u] || '', relation: rel, counts: { friends: 12 + s, watched: 40 + s * 7, comments: 5 + s }, mutual: rel === 'friend' || u === 'me' ? 0 : 2 }; }); },
@@ -3501,10 +3503,8 @@ R.innerHTML = '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?fa
   function drawSettings(st) {
     var P = $('#setP'); st = st || {};
     P.innerHTML = '<h3>Settings<button class="ib" data-close aria-label="Close" style="margin:-8px -8px -8px 0"><i class="ic" data-i="x"></i></button></h3>' +
-      '<button class="srow" data-app="1"><span><b>App settings</b><small>Source, audio, plugins, history</small></span></button>' +
       '<button class="srow" role="switch" data-k="showWatching" aria-checked="' + (st.showWatching !== false) + '"><span><b>Show what I am watching</b><small>Friends see it and can ask to join</small></span><i class="sw"></i></button>' +
-      '<button class="srow" role="switch" data-k="anyoneCanMessage" aria-checked="' + (st.anyoneCanMessage !== false) + '"><span><b>Message requests from anyone</b><small>Others can send one message to ask</small></span><i class="sw"></i></button>' +
-      '<div class="psec">Prototype network</div><div class="seg" id="netSeg">' + [['ok', 'Normal'], ['slow', 'Slow'], ['fail', 'Error'], ['empty', 'Empty']].map(function (m) { return '<button data-n="' + m[0] + '" class="' + (S._mode() === m[0] ? 'on' : '') + '">' + m[1] + '</button>'; }).join('') + '</div><div class="psec" style="text-transform:none;letter-spacing:0;font-weight:500;padding-top:0">Switch to Slow, Error or Empty, then reopen Messages to see each state.</div>';
+      '<button class="srow" role="switch" data-k="anyoneCanMessage" aria-checked="' + (st.anyoneCanMessage !== false) + '"><span><b>Message requests from anyone</b><small>Others can send one message to ask</small></span><i class="sw"></i></button>';
     $$('[data-i]', P).forEach(function (e) { e.innerHTML = '<svg viewBox="0 0 24 24">' + IC[e.dataset.i] + '</svg>'; });
     P.onclick = function (e) {
       if (e.target.closest('[data-app]')) { closeL($('#L-set')); var g = document.getElementById('pgear'); if (g) { var gr = g.getBoundingClientRect(); LT = { el: null, rect: { top: gr.top, left: gr.left, right: gr.right, bottom: gr.bottom, width: gr.width, height: gr.height }, t: Date.now() }; } setTimeout(function () { go('settings'); }, 120); return; } var r = e.target.closest('.srow'); if (r) { var v = r.getAttribute('aria-checked') !== 'true'; r.setAttribute('aria-checked', v); var p = {}; p[r.dataset.k] = v; S.updateProfile(p); return; }
@@ -3844,12 +3844,12 @@ routes.profile = function (p, my) {
         '<div class="d-b d-ad"><div class="d-ring" style="background:conic-gradient(#FFFFFF 0 ' + pct + '%,#333333 0)"><i><span><b>' + ads + '/' + goal + '</b><small>ads today</small></span></i></div><div style="flex:1;min-width:0"><h4>Chat pass</h4><p>' + (left ? left + ' left' : 'No active pass') + '</p><div class="d-bs"><a class="d-bt" id="d-ad" role="button">Watch ad</a><a class="d-bt o" id="d-dn" role="button">Donate</a></div></div></div>' +
         '<div class="d-b d-st"><div><b>' + DASH.ads + '</b><small>Ads</small></div><div><b>' + money(DASH.donated) + '</b><small>Donated</small></div><div><b>' + fmtHrs(store.usage || 0) + '</b><small>App time</small></div><div><b>' + (left || '—') + '</b><small>Plan left</small></div></div>' +
         '<div class="d-b"><div class="d-h"><span>Top 10</span>' + (DASH.top[LBK].length > 3 ? '<a id="d-all" role="button">' + (LBALL ? 'Show less' : 'View all') + ' ›</a>' : '') + '</div><div class="d-sg"><a data-k="donated" class="' + (LBK === 'donated' ? 'on' : '') + '">Donated</a><a data-k="ads" class="' + (LBK === 'ads' ? 'on' : '') + '">Ads watched</a></div><div id="d-lb">' + lb() + '</div></div>' +
-        '</div><div class="d-c d-set"><a class="d-s" data-go="appset">App settings<small>›</small></a><a class="d-s" data-go="repos">Extensions<small>›</small></a>' + (GUEST ? '<a class="d-s" id="d-lo" style="color:#FFFFFF">Sign in or create account<small>›</small></a>' : '<a class="d-s" id="d-pv">Account and privacy<small>›</small></a><a class="d-s lo" id="d-lo">Log out</a>') + '</div></div>';
+        '</div><div class="d-c d-set"><a class="d-s" data-go="appset">Settings<small>›</small></a>' + (GUEST ? '<a class="d-s" id="d-lo" style="color:#FFFFFF">Sign in or create account<small>›</small></a>' : '') + '</div></div>';
       $('#d-ed').onclick = function () { if (GUEST) { SO.signin(); } else { SO.edit(this); } }; var ad = $('#d-add'); if (ad) { ad.onclick = function () { SO.edit(this); }; }
       $('#d-fr').onclick = function () { if (GUEST) { SO.signin(); } else { SO.friends(this); } }; $('#d-fv').onclick = function () { go('mylist'); };
       $('#d-ad').onclick = function () { if (window.BlooBZDash && window.BlooBZDash.watchAd) { window.BlooBZDash.watchAd(); } else { toast('Ads are coming soon'); } };
       $('#d-dn').onclick = function () { if (window.BlooBZDash && window.BlooBZDash.donate) { window.BlooBZDash.donate(); } else { toast('Donations are coming soon'); } };
-      var pv = $('#d-pv'); if (pv) { pv.onclick = function () { SO.settings(this, d.settings); }; } $('#d-lo').onclick = function () { if (GUEST) { SO.signin(); } else { SO.logout(this); } };
+      var pv = $('#d-pv'); if (pv) { pv.onclick = function () { SO.settings(this, d.settings); }; } var lo = $('#d-lo'); if (lo) { lo.onclick = function () { if (GUEST) { SO.signin(); } else { SO.logout(this); } }; }
       var al = $('#d-all'); if (al) { al.onclick = function () { LBALL = !LBALL; draw(); }; }
       Array.prototype.forEach.call(view.querySelectorAll('.d-sg a'), function (x) { x.onclick = function () { LBK = x.getAttribute('data-k'); LBALL = false; draw(); }; });
     }
@@ -3859,26 +3859,257 @@ routes.profile = function (p, my) {
 };
 store.joined = store.joined || Date.now();
 setInterval(function () { if (!document.hidden) { store.usage = (store.usage || 0) + 15; if (++DASH._t % 4 === 0) { saveStore(); } } }, 15000); DASH._t = 0;
+/* ---------- settings v48: folders ---------- */
+var APPVER = { code: 62, name: '5.21-settings' };
+var APP_JSON = 'https://raw.githubusercontent.com/Bloobz-890/bloobz-repo/main/app.json';
+var DONATE_URL = '', POLICY_URL = '';
+var CATS = [['anime', 'Anime', 'Anime sources'], ['donghua', 'Donghua', 'Chinese animation'], ['kdrama', 'K-drama', 'Korean and Asian dramas'], ['movies', 'Movies', 'Movies and series']];
+var CATMAP = { animexin: ['anime', 'donghua'], animepahe: ['anime'], anikoto: ['anime'], donghuastream: ['donghua'], kisskh: ['kdrama'], hindidrama: ['kdrama'], moviebox: ['movies'] };
+function plCats(pl) {
+  var c = pl.category || pl.categories;
+  if (c) { return [].concat(c).map(function (x) { return String(x).toLowerCase().replace(/[^a-z]/g, ''); }); }
+  if (CATMAP[pl.id]) { return CATMAP[pl.id]; }
+  var d = (pl.name + ' ' + (pl.description || '')).toLowerCase();
+  if (/k-?drama|c-?drama|drama/.test(d)) { return ['kdrama']; }
+  if (/donghua/.test(d)) { return ['donghua']; }
+  if (/movie/.test(d)) { return ['movies']; }
+  return ['anime'];
+}
+var REPOMEM = null;
+function plugRepoList() {
+  var url = store.repoUrl || REPO_DEF;
+  if (REPOMEM && REPOMEM.url === url && Date.now() - REPOMEM.t < 60000) { return Promise.resolve(REPOMEM.j); }
+  return fetch(url + (url.indexOf('?') < 0 ? '?t=' + Date.now() : '')).then(function (r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.json(); }).then(function (j) {
+    if (!j || !j.plugins) { throw new Error('Not a BlooBZ repo file'); }
+    REPOMEM = { url: url, t: Date.now(), j: j }; return j;
+  });
+}
+function plugInstall(pl) {
+  var base = store.repoUrl || REPO_DEF;
+  return fetch(repoUrl(base, pl.url) + '?t=' + Date.now()).then(function (r) { if (!r.ok) { throw new Error('HTTP ' + r.status); } return r.text(); }).then(function (code) {
+    new Function('BZ', code);
+    var c = plugCode(); c[pl.id] = code; plugSave(c); plugFlush(pl.id);
+    store.plug = store.plug || {}; store.plug[pl.id] = { v: pl.version, url: pl.url, name: pl.name }; saveStore(true); return pl;
+  });
+}
+function plugUpdatable(j) {
+  return j.plugins.filter(function (pl) { var i = (store.plug || {})[pl.id]; return i && Number(i.v) < Number(pl.version); });
+}
+function plugAutoUpdate() {
+  if (IS_ENGINE || (store.set && store.set.autoPlug === false)) { return; }
+  if (!Object.keys(store.plug || {}).length) { return; }
+  plugRepoList().then(function (j) {
+    var todo = plugUpdatable(j); if (!todo.length) { return; }
+    return Promise.all(todo.map(function (pl) { return plugInstall(pl).then(function () { return 1; }, function () { return 0; }); })).then(function (r) {
+      var n = r.reduce(function (a, b) { return a + b; }, 0); if (n) { toast(n + (n > 1 ? ' plugins' : ' plugin') + ' updated'); }
+    });
+  }).catch(function () {});
+}
+setTimeout(plugAutoUpdate, 3500);
+function bgApply() { var b = document.getElementById('bgslot'); if (b) { b.style.display = (store.set && store.set.bgOff) ? 'none' : ''; } }
+bgApply();
+(function () {
+  var st = document.createElement('style');
+  st.textContent = '.sfo{display:flex;align-items:center;gap:12px;width:100%;min-height:62px;padding:12px 20px;border-bottom:1px solid #333333;text-align:left;color:#FFFFFF}.sfo b{display:block;font-size:15px;font-weight:700}.sfo small{display:block;color:#9A9A9A;font-size:12px;margin-top:2px}.sfo .sv{margin-left:auto;color:#D9D9D9;font-size:12.5px;white-space:nowrap}.sfo .sc{margin-left:auto;color:#6B6B6B;font-size:18px}.sfo .sv+.sc{margin-left:8px}.stg{margin-left:auto;flex:none;width:44px;height:26px;border-radius:13px;background:#333333;position:relative}.stg:after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#9A9A9A;transition:left .15s}.stg.on{background:#FFFFFF}.stg.on:after{left:21px;background:#0B0B0B}.sbx{margin:14px 20px 0;color:#D9D9D9;font-size:13px;line-height:1.5}.sbx h4{color:#FFFFFF;font-size:14px;margin:16px 0 4px}.sch{display:inline-block;padding:6px 12px;border-radius:99px;border:1px solid #6B6B6B;font-size:12px;font-weight:700;color:#FFFFFF;background:none}.sch.f{background:#FFFFFF;color:#0B0B0B;border-color:#FFFFFF}.sch.x{border-color:#333333;color:#9A9A9A}.spl{padding:14px 20px;border-bottom:1px solid #333333}.spl .t{display:flex;justify-content:space-between;gap:10px;align-items:center}.spl .t b{font-size:15px}.spl p{color:#9A9A9A;font-size:12px;margin:4px 0 10px}.spl .bs{display:flex;gap:8px;flex-wrap:wrap}';
+  document.head.appendChild(st);
+})();
+function sHead(t) { return '<div class="top"><a class="ib" id="bk">' + ic('back') + '</a><div class="logo" style="font-size:18px">' + esc(t) + '</div><span style="width:36px"></span></div>'; }
+function sRow(id, t, sub, val, chev) { return '<button class="sfo" id="' + id + '"><span><b>' + esc(t) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span>' + (val != null ? '<span class="sv">' + esc(val) + '</span>' : '') + (chev === false ? '' : '<span class="sc">›</span>') + '</button>'; }
+function sTg(id, t, sub, on) { return '<button class="sfo" id="' + id + '" role="switch" aria-checked="' + (!!on) + '"><span><b>' + esc(t) + '</b>' + (sub ? '<small>' + esc(sub) + '</small>' : '') + '</span><i class="stg' + (on ? ' on' : '') + '"></i></button>'; }
+function sBack() { var b = $('#bk'); if (b) { b.onclick = window.appBack; } }
+function sOpen(url) { if (!url) { toast('Link is not set up yet'); return; } raw('openurl:' + url); }
+function sConfirm(el, label, fn) {
+  if (el.getAttribute('data-c') === '1') { fn(); return; }
+  var old = el.querySelector('b').textContent; el.setAttribute('data-c', '1'); el.querySelector('b').textContent = 'Tap again to confirm';
+  setTimeout(function () { try { el.removeAttribute('data-c'); el.querySelector('b').textContent = old; } catch (e) {} }, 3000);
+}
 routes.appset = function () {
+  var inst = Object.keys(store.plug || {}).length;
+  var F = [['s_player', 'Player', 'Source, audio, controls'], ['s_ext', 'Extensions', 'Sources by category, auto update', inst ? inst + ' installed' : ''], ['s_chat', 'Chat', 'Privacy, notifications, comments'], ['s_lang', 'Language', 'App language', 'English'], ['s_acct', 'Account', 'Profile, privacy, log out'], ['s_store', 'Storage', 'History, favorites, cache'], ['s_ui', 'UI / Theme', 'Background'], ['s_about', 'About', 'Version and support'], ['s_policy', 'Privacy policy', 'How your data is used'], ['s_upd', 'App updates', 'Check for a new version', 'v' + APPVER.code]];
+  view.innerHTML = sHead('Settings') + '<div style="padding:4px 0">' + F.map(function (f) { return sRow('f_' + f[0], f[1], f[2], f[3] || null); }).join('') + '</div>';
+  sBack(); F.forEach(function (f) { $('#f_' + f[0]).onclick = function () { go(f[0]); }; });
+};
+routes.s_player = function () {
   function draw() {
     var s = store.set;
-    view.innerHTML = '<div class="top"><a class="ib" id="bk">' + ic('back') + '</a><div class="logo" style="font-size:18px">App settings</div><span style="width:36px"></span></div><div class="rows">' +
-      '<button class="row2" id="s1">Source<span>' + PVS[PV()].n + ' · ' + (PVS[PV()].side === 'web' ? 'Web Player' : PVS[PV()].side === 'plug' ? 'Plugin' : 'M3U8') + '</span></button>' +
-      '<button class="row2" id="s2">Default audio<span>' + (s.audio === 'dub' ? 'Dub' : 'Sub') + '</span></button>' +
-      '<button class="row2" id="s6">Touch dots<span>' + (s.dots === false ? 'Off' : 'On') + '</span></button>' +
-      '<button class="row2" id="s3">Clear watch history<span>' + store.hist.length + '</span></button>' +
-      '<button class="row2" id="s4">Clear favorites<span>' + store.fav.length + '</span></button></div>';
-    $('#bk').onclick = window.appBack;
-    $('#s1').onclick = function () { pvSheet(function () { draw(); }); };
-    $('#s2').onclick = function () { s.audio = s.audio === 'dub' ? 'sub' : 'dub'; saveStore(true); draw(); };
-    $('#s3').onclick = function () { store.hist = []; store.prog = {}; store.last = {}; saveStore(true); toast('History cleared'); draw(); };
-    $('#s6').onclick = function () { s.dots = (s.dots === false); saveStore(true); draw(); };
-    $('#s4').onclick = function () { store.fav = []; saveStore(true); toast('Favorites cleared'); draw(); };
+    view.innerHTML = sHead('Player') + sRow('p1', 'Default source', 'Used for home, search and playback', PVS[PV()].n) + sRow('p2', 'Default audio', 'Sub or dub when both exist', s.audio === 'dub' ? 'Dub' : 'Sub', false) + sTg('p3', 'Touch dots', 'Show a dot where you tap the player', s.dots !== false);
+    sBack();
+    $('#p1').onclick = function () { pvSheet(function () { draw(); }); };
+    $('#p2').onclick = function () { s.audio = s.audio === 'dub' ? 'sub' : 'dub'; saveStore(true); draw(); };
+    $('#p3').onclick = function () { s.dots = (s.dots === false); saveStore(true); draw(); };
   }
   draw();
 };
+routes.s_lang = function () {
+  view.innerHTML = sHead('Language') + '<button class="sfo"><span><b>English</b></span><span class="sv">✓</span></button><div class="sbx">More languages will be added later.</div>';
+  sBack();
+};
+routes.s_acct = function () {
+  var G = SO.isGuest();
+  view.innerHTML = sHead('Account') + (G ? sRow('a0', 'Sign in or create account', 'Chat, comments and friends need an account') : sRow('a1', 'Edit profile', 'Name, username, bio') + sRow('a2', 'Privacy', 'What friends and others can see') + sRow('a3', 'Log out', '', null, false));
+  sBack();
+  var e;
+  if ((e = $('#a0'))) { e.onclick = function () { SO.signin(); }; }
+  if ((e = $('#a1'))) { e.onclick = function () { SO.edit(this); }; }
+  if ((e = $('#a2'))) { e.onclick = function () { var b = this; SO.getMe().then(function (d) { SO.settings(b, d.settings); }, function () { toast('Could not load. Try again.'); }); }; }
+  if ((e = $('#a3'))) { e.onclick = function () { SO.logout(this); }; }
+};
+routes.s_store = function () {
+  function draw() {
+    view.innerHTML = sHead('Storage') + sRow('t1', 'Clear watch history', '', String(store.hist.length), false) + sRow('t2', 'Clear favorites', '', String(store.fav.length), false) + sRow('t3', 'Clear cache', 'Frees saved lists and images', null, false);
+    sBack();
+    $('#t1').onclick = function () { var el = this; sConfirm(el, '', function () { store.hist = []; store.prog = {}; store.last = {}; saveStore(true); toast('History cleared'); draw(); }); };
+    $('#t2').onclick = function () { var el = this; sConfirm(el, '', function () { store.fav = []; saveStore(true); toast('Favorites cleared'); draw(); }); };
+    $('#t3').onclick = function () { plugFlush('x'); toast('Cache cleared'); };
+  }
+  draw();
+};
+routes.s_ui = function () {
+  function draw() {
+    view.innerHTML = sHead('UI / Theme') + sTg('u1', 'Background image', 'Turn off for a plain black background', !(store.set && store.set.bgOff));
+    sBack(); $('#u1').onclick = function () { store.set.bgOff = !store.set.bgOff; saveStore(true); bgApply(); draw(); };
+  }
+  draw();
+};
+routes.s_about = function () {
+  view.innerHTML = sHead('About') + sRow('b1', 'BlooBZ', 'Version ' + APPVER.name + ' (' + APPVER.code + ')', null, false) + sRow('b2', 'Donate', 'Support the app', null) + '<div class="sbx">BlooBZ is made by one person. Donations pay for servers and new features.</div>';
+  sBack(); $('#b2').onclick = function () { if (!DONATE_URL) { toast('Donation page is coming soon'); return; } sOpen(DONATE_URL); };
+};
+routes.s_policy = function () {
+  view.innerHTML = sHead('Privacy policy') + '<div class="sbx"><h4>What we collect</h4>Your email, username and profile details when you create an account; your comments, messages and friend list; which ads you watched and how long you use the app; your watch history and favorites.' +
+    '<h4>What we do with it</h4>We use it to run your account, show comments and chats, give you your chat pass, and keep the app safe. We do not sell your personal data.' +
+    '<h4>Ads</h4>Ads are shown by third-party ad networks, which may use your device identifiers under their own policies.' +
+    '<h4>Your choices</h4>You can edit your profile, clear your history and favorites in Storage, and ask us to delete your account and data at any time.' +
+    '<h4>Contact</h4>Questions or deletion requests: use the support link in About.</div>' + (POLICY_URL ? sRow('y1', 'Open full policy', '') : '');
+  sBack(); var e = $('#y1'); if (e) { e.onclick = function () { sOpen(POLICY_URL); }; }
+};
+routes.s_upd = function () {
+  view.innerHTML = sHead('App updates') + sRow('v1', 'Current version', APPVER.name + ' (' + APPVER.code + ')', null, false) + sRow('v2', 'Check for updates', '', null, false) + '<div class="sbx" id="vr"></div>';
+  sBack();
+  $('#v2').onclick = function () {
+    var r = $('#vr'); r.textContent = 'Checking...';
+    fetch(APP_JSON + '?t=' + Date.now()).then(function (x) { if (!x.ok) { throw new Error('HTTP ' + x.status); } return x.json(); }).then(function (j) {
+      if (Number(j.code) > APPVER.code) {
+        r.innerHTML = '<b style="color:#FFFFFF">Version ' + esc(j.name || j.code) + ' is available</b><br>' + esc(j.notes || '') + '<div style="margin-top:12px"><button class="sch f" id="vd">Download</button></div>';
+        $('#vd').onclick = function () { sOpen(j.url); };
+      } else { r.textContent = 'You have the latest version.'; }
+    }).catch(function (e) { r.textContent = 'Could not check: ' + e.message; });
+  };
+};
+routes.s_ext = function () {
+  var on = !(store.set && store.set.autoPlug === false), list = null;
+  function draw() {
+    var inst = store.plug || {}, upd = list ? plugUpdatable(list) : [];
+    view.innerHTML = sHead('Extensions') + sTg('e1', 'Auto update plugins', 'Update installed plugins when the app opens', on) +
+      (upd.length ? sRow('e2', 'Update all', upd.length + (upd.length > 1 ? ' plugins have' : ' plugin has') + ' a new version', null, false) : '') +
+      CATS.map(function (c) {
+        var all = list ? list.plugins.filter(function (pl) { return plCats(pl).indexOf(c[0]) >= 0; }) : [], n = all.filter(function (pl) { return inst[pl.id]; }).length;
+        return sRow('c_' + c[0], c[1], c[2], list ? n + ' of ' + all.length : '');
+      }).join('') + sRow('e3', 'Advanced', 'Repository address and plugin tests');
+    sBack();
+    $('#e1').onclick = function () { on = !on; store.set.autoPlug = on; saveStore(true); draw(); };
+    var u = $('#e2'); if (u) { u.onclick = function () { u.querySelector('b').textContent = 'Updating...'; Promise.all(upd.map(function (pl) { return plugInstall(pl).then(function () { return 1; }, function () { return 0; }); })).then(function (r) { toast(r.reduce(function (a, b) { return a + b; }, 0) + ' updated'); draw(); }); }; }
+    CATS.forEach(function (c) { $('#c_' + c[0]).onclick = function () { go('s_extc|' + c[0]); }; });
+    $('#e3').onclick = function () { go('repos'); };
+  }
+  draw();
+  plugRepoList().then(function (j) { list = j; if (curName === 's_ext') { draw(); } }, function () { toast('Could not load the plugin list'); });
+};
+routes.s_extc = function (p) {
+  var cat = p[1], title = (CATS.filter(function (c) { return c[0] === cat; })[0] || [0, 'Plugins'])[1], list = null;
+  function draw() {
+    var inst = store.plug || {};
+    var body;
+    if (!list) { body = '<div class="sk" style="height:120px;margin:14px 20px;border-radius:14px"></div>'; }
+    else {
+      var all = list.plugins.filter(function (pl) { return plCats(pl).indexOf(cat) >= 0; });
+      body = all.length ? all.map(function (pl) {
+        var i = inst[pl.id], up = i && Number(i.v) < Number(pl.version), hasS = i && /settings\s*\(?\)?\s*[:{]/.test(plugCode()[pl.id] || '');
+        return '<div class="spl"><div class="t"><b>' + esc(pl.name) + '</b><span class="sch x">v' + esc(pl.version) + '</span></div><p>' + esc(pl.description || '') + '</p><div class="bs">' +
+          (i ? (up ? '<button class="sch f" data-i="' + esc(pl.id) + '">Update</button>' : '<span class="sch x">Installed</span>') : '<button class="sch f" data-i="' + esc(pl.id) + '">Install</button>') +
+          (hasS ? '<button class="sch" data-s="' + esc(pl.id) + '">Settings</button>' : '') + (i ? '<button class="sch x" data-r="' + esc(pl.id) + '">Remove</button>' : '') + '</div></div>';
+      }).join('') : '<div class="sbx">No plugins in this category yet.</div>';
+    }
+    view.innerHTML = sHead(title) + body; sBack();
+    view.querySelectorAll('[data-i]').forEach(function (b) { b.onclick = function () { var pl = list.plugins.filter(function (x) { return x.id === b.getAttribute('data-i'); })[0]; b.textContent = 'Installing...'; plugInstall(pl).then(function () { toast(pl.name + ' installed'); draw(); }, function (e) { toast('Install failed: ' + e.message); draw(); }); }; });
+    view.querySelectorAll('[data-s]').forEach(function (b) { b.onclick = function () { plugSettings(b.getAttribute('data-s')); }; });
+    view.querySelectorAll('[data-r]').forEach(function (b) { b.onclick = function () { var id = b.getAttribute('data-r'); if (b.getAttribute('data-c') !== '1') { b.setAttribute('data-c', '1'); b.textContent = 'Tap again'; setTimeout(function () { try { b.removeAttribute('data-c'); b.textContent = 'Remove'; } catch (e) {} }, 3000); return; } var c = plugCode(); delete c[id]; plugSave(c); plugFlush(id); delete store.plug[id]; saveStore(true); toast('Removed'); draw(); }; });
+  }
+  draw();
+  plugRepoList().then(function (j) { list = j; if (curName === 's_extc') { draw(); } }, function () { toast('Could not load the plugin list'); });
+};
+
+/* ---------- chat settings (Instagram-style privacy) ---------- */
+var CHATDEF = { priv: false, activity: true, showWatching: true, readRcpt: true, typing: true, whoMsg: 'everyone', whoAdd: 'everyone', whoCom: 'everyone', nMsg: true, nReq: true, nRep: true, nMen: true, nOnl: false, spoil: true, prof: true, cEmoji: true };
+function chatSet() { store.set.chat = store.set.chat || {}; var c = store.set.chat; for (var k in CHATDEF) { if (c[k] === undefined) { c[k] = CHATDEF[k]; } } return c; }
+function chatSave(patch) { var c = chatSet(); for (var k in patch) { c[k] = patch[k]; } saveStore(true); try { SO.isGuest() || S2().updateProfile({ chat: c }); } catch (e) {} }
+function S2() { return window.Social; }
+var WHO = { everyone: 'Everyone', friends: 'Friends only', none: 'No one' };
+function whoNext(v, three) { var a = three ? ['everyone', 'friends', 'none'] : ['everyone', 'friends']; return a[(a.indexOf(v) + 1) % a.length]; }
+routes.s_chat = function () {
+  var c = chatSet(), nR = Object.keys(store.set.chat || {}).length >= 0;
+  view.innerHTML = sHead('Chat') + sRow('h1', 'Privacy', 'Who can see you, message you and add you', c.priv ? 'Private' : 'Public') + sRow('h2', 'Messages', 'Read receipts, typing, message requests') + sRow('h3', 'Comments', 'Spoilers, filter, who can reply') + sRow('h4', 'Notifications', 'Messages, replies, mentions, friends') + sRow('h5', 'Blocked accounts', 'People you blocked');
+  sBack();
+  $('#h1').onclick = function () { go('s_cpriv'); }; $('#h2').onclick = function () { go('s_cmsg'); }; $('#h3').onclick = function () { go('s_ccom'); }; $('#h4').onclick = function () { go('s_cnot'); }; $('#h5').onclick = function () { go('s_cblk'); };
+};
+function chatPage(name, title, rows, note) {
+  routes[name] = function () {
+    function draw() {
+      var c = chatSet();
+      view.innerHTML = sHead(title) + rows.map(function (r) {
+        if (r.t === 'tg') { return sTg('k_' + r.k, r.n, r.s, c[r.k]); }
+        return sRow('k_' + r.k, r.n, r.s, WHO[c[r.k]], false);
+      }).join('') + (note ? '<div class="sbx">' + note + '</div>' : '');
+      sBack();
+      rows.forEach(function (r) {
+        $('#k_' + r.k).onclick = function () {
+          var p = {};
+          if (r.t === 'tg') { p[r.k] = !c[r.k]; } else { p[r.k] = whoNext(c[r.k], r.three); }
+          chatSave(p); draw();
+        };
+      });
+    }
+    draw();
+  };
+  OVER[name] = 1;
+}
+chatPage('s_cpriv', 'Privacy', [
+  { t: 'tg', k: 'priv', n: 'Private account', s: 'Only friends can see your profile, activity and comments' },
+  { t: 'tg', k: 'activity', n: 'Activity status', s: 'Show when you are online. If off, you cannot see theirs either' },
+  { t: 'tg', k: 'showWatching', n: 'Show what I am watching', s: 'Friends see it and can ask to join' },
+  { t: 'tg', k: 'prof', n: 'Show my watch stats', s: 'Watched count and recent shows on your profile' },
+  { t: 'wh', k: 'whoAdd', n: 'Who can add me', s: 'Friend requests' }
+], 'A private account hides your profile details from people who are not your friends. Existing friends stay friends.');
+chatPage('s_cmsg', 'Messages', [
+  { t: 'wh', k: 'whoMsg', n: 'Who can message me', s: 'Friends only sends others to message requests', three: true },
+  { t: 'tg', k: 'readRcpt', n: 'Read receipts', s: 'Let people see when you read their message' },
+  { t: 'tg', k: 'typing', n: 'Typing indicator', s: 'Show when you are typing' }
+], 'Turn off read receipts and you will not see them from others either.');
+chatPage('s_ccom', 'Comments', [
+  { t: 'wh', k: 'whoCom', n: 'Who can reply to my comments', s: 'Replies to what you post', three: true },
+  { t: 'tg', k: 'spoil', n: 'Hide spoilers', s: 'Blur comments marked as spoilers until you tap them' },
+  { t: 'tg', k: 'cEmoji', n: 'Show reactions', s: 'Emoji reactions under comments' }
+]);
+chatPage('s_cnot', 'Notifications', [
+  { t: 'tg', k: 'nMsg', n: 'Messages', s: 'New direct messages' },
+  { t: 'tg', k: 'nReq', n: 'Friend and message requests', s: 'Someone wants to connect' },
+  { t: 'tg', k: 'nRep', n: 'Replies', s: 'Someone replied to your comment' },
+  { t: 'tg', k: 'nMen', n: 'Mentions', s: 'Someone tagged you' },
+  { t: 'tg', k: 'nOnl', n: 'Friends watching', s: 'A friend starts watching something' }
+]);
+routes.s_cblk = function () {
+  function draw(list) {
+    view.innerHTML = sHead('Blocked accounts') + (list === null ? '<div class="sk" style="height:80px;margin:14px 20px;border-radius:14px"></div>' : list.length ? list.map(function (p) { return '<div class="spl"><div class="t"><b>' + esc(p.name) + '</b><button class="sch" data-u="' + esc(p.id) + '">Unblock</button></div></div>'; }).join('') : '<div class="sbx">You have not blocked anyone. You can block someone from their profile.</div>');
+    sBack();
+    view.querySelectorAll('[data-u]').forEach(function (b) { b.onclick = function () { S2().unblock(b.getAttribute('data-u')).then(function () { toast('Unblocked'); load(); }, function () { toast('Could not unblock. Try again.'); }); }; });
+  }
+  function load() { draw(null); S2().listBlocked().then(draw, function () { draw([]); }); }
+  if (SO.isGuest()) { view.innerHTML = sHead('Blocked accounts') + '<div class="sbx">Sign in to manage blocked accounts.</div>'; sBack(); return; }
+  load();
+};
+OVER.s_chat = 1; OVER.s_cblk = 1;
 routes.repos = function () { reposScreen(); };
-OVER.appset = 1; OVER.repos = 1;
+OVER.appset = 1; OVER.repos = 1; OVER.s_player = 1; OVER.s_ext = 1; OVER.s_extc = 1; OVER.s_lang = 1; OVER.s_acct = 1; OVER.s_store = 1; OVER.s_ui = 1; OVER.s_about = 1; OVER.s_policy = 1; OVER.s_upd = 1;
 var render1 = render;
 render = function () { var r = render1.apply(this, arguments); try { SO.back && SO.back(curName === 'settings' && stack.length > 1); if (curName === 'profile') { Array.prototype.forEach.call(navEl.children, function (a) { a.classList.toggle('on', a.getAttribute('data-tab') === 'profile'); }); } } catch (e) {} return r; };
 var appBack1 = window.appBack;

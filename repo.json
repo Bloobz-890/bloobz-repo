@@ -10,7 +10,11 @@
       "lang": "en",
       "version": 33,
       "status": "beta",
-      "url": "plugins/animexin.js"
+      "url": "plugins/animexin.js",
+      "category": [
+        "anime",
+        "donghua"
+      ]
     },
     {
       "id": "animepahe",
@@ -19,7 +23,10 @@
       "lang": "en",
       "version": 4,
       "status": "beta",
-      "url": "plugins/animepahe.js"
+      "url": "plugins/animepahe.js",
+      "category": [
+        "anime"
+      ]
     },
     {
       "id": "donghuastream",
@@ -28,7 +35,10 @@
       "lang": "en",
       "version": 30,
       "status": "beta",
-      "url": "plugins/donghuastream.js"
+      "url": "plugins/donghuastream.js",
+      "category": [
+        "donghua"
+      ]
     },
     {
       "id": "anikoto",
@@ -37,7 +47,10 @@
       "lang": "en",
       "version": 2,
       "status": "beta",
-      "url": "plugins/anikoto.js"
+      "url": "plugins/anikoto.js",
+      "category": [
+        "anime"
+      ]
     },
     {
       "id": "moviebox",
@@ -46,7 +59,10 @@
       "lang": "en",
       "version": 15,
       "status": "beta",
-      "url": "plugins/moviebox.js"
+      "url": "plugins/moviebox.js",
+      "category": [
+        "movies"
+      ]
     },
     {
       "id": "kisskh",
@@ -55,7 +71,10 @@
       "lang": "en",
       "version": 8,
       "status": "beta",
-      "url": "plugins/kisskh.js"
+      "url": "plugins/kisskh.js",
+      "category": [
+        "kdrama"
+      ]
     },
     {
       "id": "hindidrama",
@@ -64,7 +83,10 @@
       "lang": "hi",
       "version": 4,
       "status": "beta",
-      "url": "plugins/hindidrama.js"
+      "url": "plugins/hindidrama.js",
+      "category": [
+        "kdrama"
+      ]
     }
   ]
 }
