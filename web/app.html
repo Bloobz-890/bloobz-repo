@@ -6,7 +6,7 @@
 <title>BlooBZ</title>
 <script>
 /* remote-update safety: tell the loader this copy booted */
-(function(){ window.addEventListener('error', function(){ window.__fatal = 1; }); setTimeout(function(){ if (!window.__fatal) { try { localStorage.setItem('rPending', ''); } catch (e) {} } }, 2500); })();
+(function(){ window.addEventListener('error', function(){ window.__fatal = 1; try { localStorage.setItem('rFatal', '1'); } catch (e) {} }); setTimeout(function(){ if (!window.__fatal) { try { localStorage.setItem('rPending', ''); } catch (e) {} } }, 2500); })();
 </script>
 <script>window.BZ_DASH = 1; window.BZ_CAPS = { dash: 1, textSubs: 1, subFormats: 'vtt,srt,ass', extraHeaders: 1, cookie: 1, embed: 1 };window.onerror=function(m,u,l){try{var d=document.createElement('div');d.style.cssText='position:fixed;left:0;top:0;right:0;bottom:0;z-index:99999;background:#0B0B0B;color:#FFFFFF;font:13px monospace;padding:24px;white-space:pre-wrap;overflow:auto';d.textContent='BlooBZ error (send a screenshot):\n'+m+'\nline '+l;(document.body||document.documentElement).appendChild(d)}catch(e){}};</script>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
@@ -3860,7 +3860,7 @@ routes.profile = function (p, my) {
 store.joined = store.joined || Date.now();
 setInterval(function () { if (!document.hidden) { store.usage = (store.usage || 0) + 15; if (++DASH._t % 4 === 0) { saveStore(); } } }, 15000); DASH._t = 0;
 /* ---------- settings v48: folders ---------- */
-var APPVER = { code: 62, name: '5.21-settings' };
+var APPVER = { code: 63, name: '5.22-settings' };
 var APP_JSON = 'https://raw.githubusercontent.com/Bloobz-890/bloobz-repo/main/app.json';
 var DONATE_URL = '', POLICY_URL = '';
 var CATS = [['anime', 'Anime', 'Anime sources'], ['donghua', 'Donghua', 'Chinese animation'], ['kdrama', 'K-drama', 'Korean and Asian dramas'], ['movies', 'Movies', 'Movies and series']];
