@@ -679,6 +679,122 @@ body{font-family:'Inter',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif}
   <nav id="nav"></nav>
   <div id="toast"></div>
 </div>
+<style>
+#pz{position:fixed;inset:0;z-index:9998;display:none;justify-content:center;align-items:flex-end;background:rgba(0,0,0,.62)}
+#pz.on{display:flex}
+#pz .pzs{width:100%;max-width:460px;max-height:92%;overflow:auto;background:#131315;border-radius:22px 22px 0 0;border-top:1px solid #2a2a30;padding:18px 18px calc(22px + env(safe-area-inset-bottom,0px));color:#fff;font-family:system-ui,Roboto,Arial,sans-serif;box-sizing:border-box}
+#pz.full .pzs{height:100%;max-height:100%;border-radius:0}
+#pz h3{margin:0 0 6px;font-size:20px;font-weight:800}
+#pz p{margin:0 0 14px;font-size:13px;line-height:1.5;color:#a6a6ad}
+#pz .pzu b,#pz p b{display:inline !important;width:auto !important;min-width:0 !important;flex:none !important}
+#pz .pzr{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+#pz button{font:inherit;color:#fff;cursor:pointer;border:1px solid #34343a;background:#1b1b1f;border-radius:14px;padding:12px 16px;font-size:14px;font-weight:700}
+#pz button.pzp{background:#fff;color:#000;border-color:#fff}
+#pz button.pzp[disabled]{opacity:.4;cursor:default}
+#pz button.pzo.on{border-color:#e5383b;background:#2a1418}
+#pz button.pzb{display:block;width:100%;text-align:left;margin-bottom:8px}
+#pz button.pzb small{display:block;font-weight:400;color:#a6a6ad;font-size:12px;margin-top:2px}
+#pz button.pzb.on{border-color:#e5383b;background:#2a1418}
+#pz .pzw{width:100%;margin-top:4px}
+#pz input{width:100%;box-sizing:border-box;background:#1b1b1f;border:1px solid #34343a;border-radius:14px;color:#fff;padding:13px 14px;font:inherit;font-size:14px;margin:0 0 12px;outline:none}
+#pz input:focus{border-color:#e5383b}
+#pz .pzn{background:#1b1b1f;border:1px dashed #44444c;border-radius:14px;padding:12px 14px;font-size:13px;margin:0 0 12px;word-break:break-all}
+#pz .pzn b{font-size:17px;letter-spacing:.5px;display:block;margin-top:2px}
+#pz .pzu{display:flex;align-items:center;gap:8px;background:#1b1b1f;border-radius:12px;padding:10px 12px;margin:0 0 14px;font-size:12px;color:#c9c9cf}
+#pz .pzc{text-align:center;margin-top:10px;font-size:13px;color:#8d8d95;background:none;border:0;width:100%}
+#pz .pzbar{height:6px;border-radius:6px;background:#2a2a30;overflow:hidden;margin:12px 0}
+#pz .pzbar i{display:block;height:100%;width:0;background:#e5383b;transition:width 1s linear}
+#pz .pzad{height:200px;border-radius:16px;background:radial-gradient(100% 90% at 30% 20%,#2a0f16,#000);display:flex;align-items:center;justify-content:center;font-size:13px;color:#9a9aa2;margin:0 0 6px;border:1px solid #2a2a30}
+#pz .pzok{width:56px;height:56px;border-radius:50%;background:#1f3d2e;color:#6fe0a0;display:flex;align-items:center;justify-content:center;font-size:28px;margin:6px 0 12px}
+#pz .pzt{font-size:11px;color:#6d6d75;border:1px dashed #3a3a40;border-radius:10px;padding:8px 10px;margin-top:14px}
+</style>
+<div id="pz"><div class="pzs" id="pzs"></div></div>
+<script>
+(function(){
+  var $=function(i){return document.getElementById(i)};
+  var CFG={bmc:'',bkash:'',nagad:'',rate:125};   /* fill in later: Buy Me a Coffee page link, bKash and Nagad numbers */
+  var KEY='bzdash',st={adsToday:0,ads:0,adsGoal:3,donated:0,planEnd:0,top:{donated:[],ads:[]},day:'',pend:[]};
+  try{var sv=JSON.parse(localStorage.getItem(KEY)||'null');if(sv){for(var k in sv)st[k]=sv[k]}}catch(e){}
+  var today=new Date().toISOString().slice(0,10);if(st.day!==today){st.day=today;st.adsToday=0}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(st))}catch(e){}}
+  var DAY=864e5,tm=null;
+  var AMT=[[1,'7 days'],[3,'30 days'],[5,'60 days']];
+  var pick=3,method='bmc',txid='',pend=null;
+  function open(full){$('pz').className='on'+(full?' full':'')}
+  function close(){clearInterval(tm);$('pz').className='';$('pzs').innerHTML=''}
+  function refresh(){var t=document.querySelector('[data-tab=profile]');if(t)t.click()}
+  function leftTxt(){if(st.planEnd<=Date.now())return '';var h=Math.ceil((st.planEnd-Date.now())/36e5);return h<48?h+'h':Math.ceil(h/24)+' days'}
+  function mark(){return ''}
+  /* ---- watch ad ---- */
+  function adSheet(){
+    var done=st.adsToday>=st.adsGoal,l=leftTxt();
+    $('pzs').innerHTML='<h3>Chat pass</h3><p>Watch a short ad to unlock chatting and commenting for 24 hours. Reading comments is always free.</p>'
+     +'<div class="pzu">Today: <b>'+st.adsToday+' of '+st.adsGoal+'</b> ads watched'+(l?' &middot; pass active, '+l+' left':'')+'</div>'
+     +(done?'<p>You used all '+st.adsGoal+' ads for today. Come back tomorrow, or donate for a longer pass.</p>':'')
+     +'<button class="pzp pzw" id="pzgo"'+(done?' disabled':'')+'>'+(done?'Come back tomorrow':'Watch ad')+'</button><button class="pzc" id="pzx">Not now</button>'+mark();
+    $('pzx').onclick=close;if(!done)$('pzgo').onclick=adPlay;open();
+  }
+  function adPlay(){
+    var n=5;$('pzs').innerHTML='<h3>Ad</h3><div class="pzad">Ad placeholder: the real ad is connected later</div><div class="pzbar"><i id="pzi"></i></div><p id="pzl">Reward in '+n+'s</p><button class="pzc" id="pzcl" style="display:none">Close ad (no reward)</button>';
+    open(true);setTimeout(function(){var i=$('pzi');if(i)i.style.width='100%';i&&(i.style.transition='width '+n+'s linear')},30);
+    setTimeout(function(){var c=$('pzcl');if(c){c.style.display='block';c.onclick=function(){clearInterval(tm);adFail()}}},2000);
+    tm=setInterval(function(){n--;if(n>0){var l=$('pzl');if(l)l.textContent='Reward in '+n+'s'}else{clearInterval(tm);adDone()}},1000);
+  }
+  function adFail(){$('pzs').innerHTML='<h3>Ad not completed</h3><p>The ad was closed before the end, so no reward was given. Try again.</p><button class="pzp pzw" id="pzgo">Try again</button><button class="pzc" id="pzx">Not now</button>';$('pzx').onclick=close;$('pzgo').onclick=adPlay;open();$('pz').className='on'}
+  function adDone(){
+    st.adsToday++;st.ads++;st.planEnd=Math.max(Date.now(),st.planEnd)+DAY;save();
+    $('pzs').innerHTML='<div class="pzok">&#10003;</div><h3>Chat pass active</h3><p>You can chat and comment for the next 24 hours. Ads today: '+st.adsToday+' of '+st.adsGoal+'.</p><button class="pzp pzw" id="pzx">Done</button>';
+    $('pz').className='on';$('pzx').onclick=function(){close();refresh()};
+  }
+  /* ---- donate ---- */
+  function usd(){return pick}
+  function reward(){for(var i=0;i<AMT.length;i++)if(AMT[i][0]===pick)return AMT[i][1];return pick>=5?'60 days':'30 days'}
+  function dSheet(){
+    var h='<h3>Donate</h3><p>Donations keep BlooBZ running. A donation also gives you a longer Chat pass.</p><div class="pzr" id="pza">';
+    AMT.forEach(function(a){h+='<button class="pzo'+(pick===a[0]?' on':'')+'" data-a="'+a[0]+'">$'+a[0]+'<small style="display:block;font-weight:400;color:#a6a6ad;font-size:11px">'+a[1]+'</small></button>'});
+    h+='</div><div class="pzu">You get <b>'+reward()+'</b> of Chat pass and a place on the Top 10 board.</div>';
+    h+='<button class="pzb'+(method==='bmc'?' on':'')+'" data-m="bmc">Card or crypto<small>Opens secure checkout inside the app</small></button>';
+    h+='<button class="pzb'+(method==='bkash'?' on':'')+'" data-m="bkash">bKash<small>Send money, then enter the transaction ID</small></button>';
+    h+='<button class="pzb'+(method==='nagad'?' on':'')+'" data-m="nagad">Nagad<small>Send money, then enter the transaction ID</small></button>';
+    var okm=!!CFG[method];if(!okm)h+='<p style="margin:0 0 10px;color:#f5c518">This option is not available yet.</p>';h+='<button class="pzp pzw" id="pzgo"'+(okm?'':' disabled')+'>Continue with $'+pick+'</button><button class="pzc" id="pzx">Cancel</button>'+mark();
+    $('pzs').innerHTML=h;open();$('pzx').onclick=close;
+    $('pza').onclick=function(e){var b=e.target.closest('button');if(b){pick=+b.getAttribute('data-a');dSheet()}};
+    $('pzs').onclick=function(e){var b=e.target.closest&&e.target.closest('[data-m]');if(b){method=b.getAttribute('data-m');dSheet()}};
+    $('pzgo').onclick=function(){method==='bmc'?bmc():manual()};
+  }
+  function bmc(){
+    $('pzs').innerHTML='<h3>Card or crypto</h3><div class="pzn">'+CFG.bmc.replace(/^https?:\/\//,'')+'<b>$'+pick+'</b></div><p>This page opens inside the app. Add your BlooBZ username in the message box so we can find your donation.</p>'
+     +'<input id="pzu" placeholder="Your BlooBZ username" value="">'
+     +'<div class="pzr"><button class="pzo on">Card</button><button class="pzo">Crypto</button></div>'
+     +'<button class="pzp pzw" id="pzgo">Pay $'+pick+'</button><button class="pzc" id="pzx">Back</button>'+mark();
+    open(true);$('pzx').onclick=dSheet;$('pzgo').onclick=function(){txid=($('pzu').value||'you');pending('Card or crypto')};
+  }
+  function manual(){
+    var nm=method==='bkash'?'bKash':'Nagad',bdt=Math.round(pick*CFG.rate);
+    $('pzs').innerHTML='<h3>Pay with '+nm+'</h3><p>1. Open your '+nm+' app and choose Send Money.<br>2. Send about <b style="color:#fff">'+bdt+' BDT</b> ($'+pick+') to the number below.<br>3. Enter the transaction ID here.</p>'
+     +'<div class="pzn">'+nm+' personal number<b>'+CFG[method]+'</b></div>'
+     +'<input id="pzt" placeholder="Transaction ID" autocomplete="off">'
+     +'<button class="pzp pzw" id="pzgo">I have paid</button><button class="pzc" id="pzx">Back</button>'+mark();
+    open();$('pzx').onclick=dSheet;$('pzgo').onclick=function(){var v=($('pzt').value||'').trim();if(!v){$('pzt').style.borderColor='#e5383b';$('pzt').placeholder='Enter the transaction ID';return}txid=v;pending(nm)};
+  }
+  function pending(nm){
+    pend={amt:pick,days:reward(),via:nm};st.pend.push({amt:pick,via:nm,ref:txid,at:Date.now()});save();
+    $('pzs').innerHTML='<div class="pzok" style="background:#3a2f12;color:#f5c518">&#8987;</div><h3>Donation pending</h3><p>Thank you. We check each donation by hand, usually within a few hours. Your Chat pass starts as soon as it is approved, and you will get a notification.</p><div class="pzu">'+nm+' &middot; $'+pend.amt+' &middot; reference: '+esc(txid)+'</div>'
+     +'<button class="pzp pzw" id="pzx">Done</button>';
+    $('pz').className='on';$('pzx').onclick=close;
+  }
+  function esc(s){return String(s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})}
+  function approve_unused(){
+    var d=pend.days==='7 days'?7:pend.days==='60 days'?60:30;
+    st.planEnd=Math.max(Date.now(),st.planEnd)+d*DAY;st.donated+=pend.amt;st.top.donated=[['You',st.donated]];
+    $('pzs').innerHTML='<div class="pzok">&#10003;</div><h3>Donation approved</h3><p>Thank you for supporting BlooBZ. Your Chat pass is active for '+pend.days+', and you are on the Top 10 board.</p><button class="pzp pzw" id="pzx">Done</button>';
+    $('pz').className='on';$('pzx').onclick=function(){close();refresh()};
+  }
+  window.BlooBZDash={load:function(){return JSON.parse(JSON.stringify(st))},watchAd:adSheet,donate:dSheet};
+  $('pz').addEventListener('click',function(e){if(e.target===this&&this.className.indexOf('full')<0)close()});
+})();
+</script>
+
 <script src="hls.min.js"></script>
 <script>
 (function () {
